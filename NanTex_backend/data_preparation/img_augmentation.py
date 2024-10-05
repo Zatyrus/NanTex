@@ -16,7 +16,7 @@ train_transform_schedule = [
     A.RandomCrop(256,256,always_apply=True),    # Randomly crop the image <- choose a random crop of 256x256
     A.HorizontalFlip(p=0.5),                    # Randomly flip the image horizontally (50% of the time)
     A.VerticalFlip(p=0.5),                      # Randomly flip the image vertically (50% of the time)
-    A.MedianBlur(p = 0.3,blur_limit=5)          # Apply median blur with a 30% probability, kernes size is 5 <- play with the size to enhance the effect
+    A.MedianBlur(p = 1,blur_limit=(3,5))      # Apply median blur with a 30% probability, kernes size is 5 <- play with the size to enhance the effect. ADJUST IF, SHOULD OPENCV THROW A WEIRD ERROR. (https://stackoverflow.com/questions/13193207/unsupported-format-or-combination-of-formats-when-using-cvreduce-method-in-ope)
 ]
 
 # Define the validation augmentation pipelines
@@ -37,3 +37,5 @@ train_augmentation_pipeline:A.Compose = A.Compose(train_transform_schedule)
 val_augmentation_pipeline:A.Compose = A.Compose(val_transform_schedule)
 test_augmentation_pipeline:A.Compose = A.Compose(test_transform_schedule)
 
+## Namespace
+__all__ = ["train_augmentation_pipeline", "val_augmentation_pipeline", "test_augmentation_pipeline"]

@@ -61,7 +61,7 @@ class OVERLAY_HELPER:
             return np.stack(out, axis=0)
     
     @staticmethod
-    @ray.remote
+    @ray.remote(num_returns=1)
     def __multi_core_worker_generate_stack__(punchcard:Dict[str, Tuple[int, int]], 
                                              data_in:Dict[str, List[np.ndarray]],
                                              data_path_out:str
@@ -74,7 +74,7 @@ class OVERLAY_HELPER:
         return key
     
     @staticmethod
-    @ray.remote
+    @ray.remote(num_returns=1)
     def __multi_core_worker_generate_stack_rotation__(punchcard:Dict[str, Tuple[int, int]], 
                                                       data_in:Dict[str, List[np.ndarray]],
                                                       data_path_out:str
@@ -346,7 +346,9 @@ class OverlayGenerator:
             object_references=[worker.remote(punchcard = punchcard,
                                              data_in = data_in_ref,
                                              data_path_out = data_path_out_ref)
-                               for punchcard in punchcard_refs],
+                               for punchcard in tqdm(punchcard_refs, 
+                                                     desc="Scheduling Workers", 
+                                                     position = 0)],
             total = len(punchcard_refs),
             sleep_time = sleep_time)
         
@@ -425,9 +427,9 @@ class OverlayGenerator:
         if self.DEBUG:
             print('Setting up progress monitors...')
         ## create progress monitors
-        msd_progress = tqdm(total = total, desc = 'Workers', position = 0)
-        cpu_progress = tqdm(total = 100, desc="CPU usage", bar_format='{desc}: {percentage:3.0f}%|{bar}|', position = 1)
-        mem_progress = tqdm(total=psutil.virtual_memory().total, desc="RAM usage", bar_format='{desc}: {percentage:3.0f}%|{bar}|', position = 2)
+        msd_progress = tqdm(total = total, desc = 'Workers', position = 1)
+        cpu_progress = tqdm(total = 100, desc="CPU usage", bar_format='{desc}: {percentage:3.0f}%|{bar}|', position = 2)
+        mem_progress = tqdm(total=psutil.virtual_memory().total, desc="RAM usage", bar_format='{desc}: {percentage:3.0f}%|{bar}|', position = 3)
         
         finished_states = []
         
@@ -541,4 +543,5 @@ class OverlayGenerator:
         return outpath
     
     #%% Dunder Methods
+    ## Yet to come...
     
