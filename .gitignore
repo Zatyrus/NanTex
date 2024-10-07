@@ -10,6 +10,8 @@ __pycache__/
 data/
 test_in/
 test_out/
+model/
+logs/
 
 # Distribution / packaging
 .Python

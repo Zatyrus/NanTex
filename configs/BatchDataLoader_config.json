@@ -1,6 +1,6 @@
 {
-    "raw_source": "data/train_ovl",
-    "val_source": "data/val_ovl",
+    "raw_source": "test_out/train_ovl",
+    "val_source": "test_out/val_ovl",
     "raw_aug": null,
     "val_aug": null,
     "chunks": 8,
@@ -28,5 +28,7 @@
     "out_channels": 3,
     "dtype_in": "uint16",
     "dtype_out": "float32",
-    "dtype_masks": "uint8"
+    "dtype_masks": "uint8",
+    "gen_type": "DXSM",
+    "gen_seed": null
 }

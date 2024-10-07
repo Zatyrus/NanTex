@@ -15,6 +15,7 @@ from typing import Tuple, Union, Dict, List
 
 ## Custom Dependencies
 from ..Util.pyDialogue import pyDialogue as pD
+from ..Util.bit_generator_utils import initialize_generator, spawn_generator, seed_generator
 
 class DataGenerator(Dataset):
     'Load, Augment and distribute batches for training & valitation.'
@@ -32,6 +33,8 @@ class DataGenerator(Dataset):
                  dtype_in:np.dtype = np.uint16,
                  dtype_out:np.dtype = np.float32,
                  dtype_masks:np.dtype = np.uint8,
+                 gen_type:str = 'DXSM',
+                 gen_seed:int = None,
                  is_val:bool = False
                  )->None:
         """Data generator object used in training and validation to load, augment and distribute raw and validation data in batch.
@@ -47,6 +50,11 @@ class DataGenerator(Dataset):
             standardize (bool, optional): Standardize Data (Zero-Mean, Unit-Variance) y/n. Defaults to False.
             batchsize (int, optional): Number of patches per batch. Defaults to 32.
             load_per_sample (int, optional): Number of datasets to load per batch. Number of patches taken from the same dataset. Defaults to 8.
+            dtype_in (np.dtype, optional): Data type of the input data. Defaults to np.uint16.
+            dtype_out (np.dtype, optional): Data type of the output data. Defaults to np.float32.
+            dtype_masks (np.dtype, optional): Data type of the masks. Defaults to np.uint8.
+            gen_type (str, optional): Type of random number generator. Defaults to 'DXSM'.
+            gen_seed (int, optional): Seed for the random number generator. Defaults to None.
             is_val (bool, optional): Flag if the object is used for generating validation data. Defaults to False.
         """
         
@@ -67,9 +75,17 @@ class DataGenerator(Dataset):
         self.__dtype_masks = dtype_masks
         self.__is_val = is_val
         
+        ## Check for padding if no augmentation pipeline is submitted
         if not aug_line:
             self.__transform = None
             self.__get_padding()
+            
+        ## Initialize Bit Generator
+        self.__gen:np.random.Generator
+        if gen_seed == None:
+            self.__gen = initialize_generator(gen_type)
+        else:
+            self.__gen = seed_generator(gen_type, gen_seed)
 
     def __len__(self)->int:
         """Denotes the number of files per batch
@@ -90,11 +106,11 @@ class DataGenerator(Dataset):
         """
         if self.__BatchSize > 1:            
             if self.__is_val:            
-                tmp_list = np.random.choice(a = np.arange(len(self.__files)), 
+                tmp_list = self.__gen.choice(a = np.arange(len(self.__files)), 
                                             size = int(self.__BatchSize//self.__Load_per_Sample), 
                                             replace = True)
             else:
-                tmp_list = np.random.choice(a = np.arange(len(self.__files)), 
+                tmp_list = self.__gen.choice(a = np.arange(len(self.__files)), 
                                             size = int(self.__BatchSize//self.__Load_per_Sample), 
                                             replace = False)
             
@@ -288,6 +304,8 @@ class BatchDataLoader_Handler():
             "dtype_in":"uint16",      # Data type of the input data <- Leave it.
             "dtype_out":"float32",    # Data type of the output data <- Leave it.
             "dtype_masks":"uint8",    # Data type of the masks <- Leave it.
+            "gen_type":"DXSM",        # Type of random number generator <- Leave it, if you don't know what you are doing.
+            "gen_seed":None           # Seed for the random number generator <- Use for reproducibility.
             }
         
         # Dump the configuration file       
@@ -352,6 +370,8 @@ class BatchDataLoader_Handler():
                                   dtype_in:np.dtype = np.uint16,
                                   dtype_out:np.dtype = np.float32,
                                   dtype_masks:np.dtype = np.uint8,
+                                  gen_type:str = 'DXSM',
+                                  gen_seed:int = None,
                                   )->Tuple[DataLoader, DataLoader]:
         """
         Setup DataLoad objects and feed them with data. 
@@ -370,7 +390,7 @@ class BatchDataLoader_Handler():
             val_aug (A.Compose, optional): Albumentations.Composed validation data augmentation pipeline. Defaults to None.
             chunks (int, optional): Number of patches taken from the same dataset. Defaults to 8.  <- LEGACY DEBUG PARAMETER, WILL BE DEPRECATED SOON
             load_per_sample (int, optional): Number of datasets to load per batch. Defaults to 8.
-            batchsize (int, optional): Number of patches per batch. Defaults to 32.
+            train_batchsize (int, optional): Number of patches per batch. Defaults to 32.
             train_shuffle (bool, optional): Flag to shuffle datasets between batches. Recommended. Defaults to True.
             val_shuffle (bool, optional): Flag to shuffle datasets between batches. Recommended. Defaults to True.
             normalize (bool, optional): Normalize Data y/n. Defaults to False.
@@ -381,18 +401,30 @@ class BatchDataLoader_Handler():
             pin_memory (bool, optional): Flag to pin memory. Defaults to True.
             persistant_workers (bool, optional): Flag to keep workers alive. Defaults to True.
             autobatch (bool, optional): Flag if you want to use the autobatching. Might increase performance. Defaults to True.
-            val_test_batch (int, optional): Set the number of batches used in validation. Defaults to 1.
+            dtype_in (np.dtype, optional): Data type of the input data. Defaults to np.uint16.
+            dtype_out (np.dtype, optional): Data type of the output data. Defaults to np.float32.
+            dtype_masks (np.dtype, optional): Data type of the masks. Defaults to np.uint8.
+            gen_type (str, optional): Type of random number generator. Defaults to 'DXSM'.
+            gen_seed (int, optional): Seed for the random number generator. Defaults to None.
+            val_batchsize (int, optional): Set the number of batches used in validation. Defaults to 1.
 
         Returns:
             DataLoader: _description_
         """
+        
+        ## Initialize Random Number Generator
+        tmp_gen:np.random.Generator
+        if gen_seed == None:
+            tmp_gen = initialize_generator(gen_type)
+        else:
+            tmp_gen = seed_generator(gen_type, gen_seed)
         
         if self.DEBUG:
             print("Building Data Loader.")
         
         if val_source == None:
             if (val_split < 1.0) and (val_split > 0.0):
-                val_source = np.random.choice(raw_source, size = int(len(raw_source)*val_split), replace = False) #test_source
+                val_source = tmp_gen.choice(raw_source, size = int(len(raw_source)*val_split), replace = False) #test_source
                 raw_source = [x for x in raw_source if x not in val_source]
         
         ## Retrun DataGenerator objects for train and test data
@@ -414,6 +446,8 @@ class BatchDataLoader_Handler():
                                           dtype_in = dtype_in,
                                           dtype_out = dtype_out,
                                           dtype_masks = dtype_masks,
+                                          gen_type = gen_type,
+                                          gen_seed = gen_seed,
                                           is_val = False)
             
             val_dataset = DataGenerator(files = val_source, 
@@ -429,6 +463,8 @@ class BatchDataLoader_Handler():
                                         dtype_in = dtype_in,
                                         dtype_out = dtype_out,
                                         dtype_masks = dtype_masks,
+                                        gen_type = gen_type,
+                                        gen_seed = gen_seed,
                                         is_val = True)
             
             if self.DEBUG:
@@ -471,6 +507,8 @@ class BatchDataLoader_Handler():
                                           dtype_in = dtype_in,
                                           dtype_out = dtype_out,
                                           dtype_masks = dtype_masks,
+                                          gen_type = gen_type,
+                                          gen_seed = gen_seed,
                                           is_val = False)
             
             val_dataset = DataGenerator(files = val_source, 
@@ -486,6 +524,8 @@ class BatchDataLoader_Handler():
                                         dtype_in = dtype_in,
                                         dtype_out = dtype_out,
                                         dtype_masks = dtype_masks,
+                                        gen_type = gen_type,
+                                        gen_seed = gen_seed,
                                         is_val = True)
             
             if self.DEBUG:
