@@ -23,6 +23,7 @@ except:
 
 # Custom Dependencies
 from ..Util.pyDialogue import pyDialogue as pD
+from ..Util.file_handler_core import FileHandlerCore
 
 
 class OVERLAY_HELPER:
@@ -87,7 +88,7 @@ class OVERLAY_HELPER:
             return key
 
 
-class OverlayGenerator:
+class OverlayGenerator(FileHandlerCore):
     data_paths_in:Dict[str, List[str]]                      # key: data name, value: list of paths
     data_path_out:str                                       # key: outpath
     data_in:Dict[str, List[np.ndarray]]                     # key: data name, value: data <- img_stack
@@ -124,16 +125,8 @@ class OverlayGenerator:
         # internal variables
         self.metadata = {}
         
+        # Call from parent class
         self.__post_init__()
-        
-    def __post_init__(self) -> None:
-        try:
-            self.__load_data__()
-            self.__setup_metadata__()
-            self.data_path_out = self.__check_outpath__()
-            
-        except Exception as e:
-            print(f'Error: {e}')
     
     #%% classmethods
     @classmethod
@@ -215,24 +208,6 @@ class OverlayGenerator:
         self.__setup_ray__(num_cpu = num_cpu,
                            num_gpu = num_gpu,
                            launch_dashboard = launch_dashboard)
-    
-    #%% Data Loading
-    def __load_data__(self) -> None:
-        if self.DEBUG:
-            print('Loading data...')
-        ## check for datatype
-        if self.data_type == 'npy':
-            self.__load_npy__()
-        else:
-            warnings.warn('Data type not supported yet...')
-    
-    def __load_npy__(self) -> None:
-        if self.DEBUG:
-            print('Loading npy data...')
-            
-        for key, value in self.data_paths_in.items():
-            self.data_in[key] = [np.load(path) for path in value]
-            #self.data_in[key] = np.stack(out, axis=0)
     
     #%% Data Pre-Processing
     def __generate_stencil__(self)->NoReturn:
@@ -410,15 +385,6 @@ class OverlayGenerator:
     
     def get_y_lim(self)->int:
         return max([img.shape[0] for img in sum(list(self.data_in.values()),[])])
-            
-    def __setup_metadata__(self)->NoReturn:
-        if self.DEBUG:
-            print('Setting up metadata...')
-        self.metadata = {
-            'x_lim':self.get_x_lim(),
-            'y_lim':self.get_y_lim(),
-            'sleeptime':0.0
-        }
 
     def __listen_to_ray_progress__(self,
                                    object_references:List[ray.ObjectRef], 
@@ -521,27 +487,14 @@ class OverlayGenerator:
         if self.DEBUG:
             print('Normalizing input images...')
         for key, value in self.data_in.items():
-            self.data_in[key] = [self.__normalize_img__(img = img, max_val  =max_val) for img in value]
-
-    #%% Path Handling
-    def __call_outpath__(self)->str:
-        if self.data_path_out == None:
-            return None
-        return f"{self.data_path_out}/{self.mode}"
+            self.data_in[key] = [self.__normalize_img__(img = img, max_val = max_val) for img in value]
     
-    def __retrieve_outpath__(self)->str:
+    #%% Metadata Handling
+    def __setup_metadata__(self)->NoReturn:
         if self.DEBUG:
-            print('Retrieving outpath...')
-        return pD.askDIR(query_title = f"Enter the output path for {self.mode} data: ")
-    
-    def __check_outpath__(self)->str:
-        if self.DEBUG:
-            print('Checking outpath...')
-        outpath = self.__call_outpath__()
-        if outpath == None:
-            outpath = self.__retrieve_outpath__()
-        return outpath
-    
-    #%% Dunder Methods
-    ## Yet to come...
-    
+            print('Setting up metadata...')
+        self.metadata = {
+            'x_lim':self.get_x_lim(),
+            'y_lim':self.get_y_lim(),
+            'sleeptime':0.0
+        }

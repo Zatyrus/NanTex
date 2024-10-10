@@ -12,6 +12,7 @@ test_in/
 test_out/
 model/
 logs/
+legacy/
 
 # Distribution / packaging
 .Python
