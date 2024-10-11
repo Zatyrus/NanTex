@@ -2,9 +2,11 @@
 import sys
 import torch
 import numpy as np
+from skimage import io
 import matplotlib.pyplot as plt
 from patchify import patchify, unpatchify
 
+from overrides import override
 from typing import List, Tuple, Union, Dict, Any, Optional, NoReturn, Callable
 
 # for progress bar
@@ -40,8 +42,9 @@ class Oneiros(FileHandlerCore):
     
     def __init__(self,
                  data_paths_in:Dict[str, List[str]],
-                 data_path_out:str,
-                 mode:str,
+                 data_path_out:str = None,
+                 mode:str = 'has_ground_truth',
+                 data_type:str = 'npy',
                  DEBUG:bool = False
                  ) -> None:
         # data variables
@@ -53,6 +56,7 @@ class Oneiros(FileHandlerCore):
         # control variables
         self.DEBUG = DEBUG
         self.mode = mode
+        self.data_type = data_type
         
         # internal variables
         self.metadata = {}
@@ -62,7 +66,24 @@ class Oneiros(FileHandlerCore):
         
         # Call from parent class
         self.__post_init__()
+    
+    @override
+    def __load_npy__(self) -> None:
+        if self.DEBUG:
+            print('Loading npy data...')
+            
+        for key, path in self.data_paths_in.items():
+            self.data_in[key] = np.load(path)
+              
+    @override  
+    def __load_img__(self) -> None:
+        if self.DEBUG:
+            print('Loading image data...')
         
+        for key, path in self.data_paths_in.items():
+            self.data_in[key] = io.imread(path)
+    
+    @override
     def __setup_metadata__(self)->NoReturn:
         if self.DEBUG:
             print('Setting up metadata...')
@@ -74,13 +95,16 @@ class Oneiros(FileHandlerCore):
                     "feature_3": 0.1
                     },
                 "dynamic_thresholds": {
-                    "upper" : 3,
-                    "lower" : -2
+                    "upper": 3,
+                    "lower": -2
                     },
                 "patch_size": (256, 256),
+                "dream_memory_shape" : None,
+                "patch_array_shape": None,
                 "standardize": True,
                 "normalize": False,
-                "tensortype": torch.float32
+                "tensortype": torch.float32,
+                "weights_only": True
             }
         )
     
@@ -102,7 +126,8 @@ class Oneiros(FileHandlerCore):
             return None
         
         ## get data paths
-        data_paths_in['data'] = pD.askFILES(query_title = "Please select the data files")
+        files_tmp = pD.askFILES(query_title = "Please select the data files")
+        data_paths_in.update({f"dream_{i}": files_tmp[i] for i in range(len(files_tmp))})
 
         return cls(data_paths_in = data_paths_in, 
                    mode = mode, **kwargs)
@@ -149,7 +174,7 @@ class Oneiros(FileHandlerCore):
         state_dict_path = self.__check_filepath__(state_dict_path, 'state_dict')
         
         ## get weights
-        model.load_state_dict(torch.load(state_dict_path))
+        model.load_state_dict(torch.load(state_dict_path, weights_only=self.metadata['weights_only']))
         
         return model
     
@@ -158,6 +183,7 @@ class Oneiros(FileHandlerCore):
                     model:torch.nn.Sequential,
                     activation:torch.nn.Module,
                     device:torch.device,
+                    output_channels:int,
                     state_dict_path:Optional[str] = None
                     )->NoReturn:
         if self.DEBUG:
@@ -166,12 +192,18 @@ class Oneiros(FileHandlerCore):
         ## fetch weights
         if state_dict_path:
             model = self.__fetch_weights__(model, state_dict_path)
+        else:
+            print('Warning: No state_dict path provided. Model will be initialized with random weights.')
+            print("To load pre-trained weights, call the 'load_weights' method.")
         
         ## setup model
         self.__setup_model__(model, activation, device)
         
+        ## memorize dream shape
+        self.__memorize_dream_shape__(output_channels)
+        
     def quickstart_model(self, state_dict_path:Optional[str] = None)->NoReturn:
-        from ..deep_learning.dl_model_assembly import assembled_model
+        from ..deep_learning.dl_model_assembly import assembled_model, final_layer_config
         
         if self.DEBUG:
             print('Quickstarting model...')        
@@ -179,9 +211,53 @@ class Oneiros(FileHandlerCore):
         self.setup_model(model = assembled_model['model'],
                          activation = assembled_model['activation'],
                          device = assembled_model['device'],
-                         state_dict_path = state_dict_path)
+                         state_dict_path = self.__check_filepath__(state_dict_path, 'state_dict'),
+                         output_channels=final_layer_config['out_channels'])
+        
+    def load_weights(self, state_dict_path:str = None)->NoReturn:
+        if self.DEBUG:
+            print('Loading weights...')
+        
+        # Check path
+        state_dict_path = self.__check_filepath__(state_dict_path, 'state_dict')
+         
+        try:
+            ## fetch weights
+            self.model = self.__fetch_weights__(self.model, state_dict_path)
+            self.__setup_model__(self.model, self.activation, self.device)
+        except Exception as e:
+            print(f'Error: {e}')
+            print("This may be due to the model not being setup.")
+            print("Please call 'setup_model' and try again.")
+            
     
     #%% Data Processing
+    def dream(self)->NoReturn:
+        if self.DEBUG:
+            print("Passing out...")
+            
+        # run pre-processing
+        self.__pre_process_data__()
+        
+        # offload data
+        self.__offload_data_to_device__()
+        
+        # run checks
+        self.__run_checks__()
+        
+        # go to sleep
+        if self.DEBUG:
+            print('Going to sleep...')
+        self.__go_to_sleep__()
+        
+        # reconstruct images
+        if self.DEBUG:
+            print('Waking up...')
+        self.__post_process_data__()
+    
+    def __post_process_data__(self)->NoReturn:
+        pass
+    
     def __pre_process_data__(self)->NoReturn:
         if self.DEBUG:
             print('Pre-processing data...')
@@ -198,51 +274,47 @@ class Oneiros(FileHandlerCore):
             if self.metadata[func.__name__.split('_')[2]]:
                 func()
 
+        # memorize patch array shape
+        self.__memorize_patch_array_shape__()
+
         # patchify images
         self.__patchify_imgs__()
         
         # reshape images
         self.__reshape_imgs__()
     
-    def __go_to_sleep__(self)->NoReturn:       
-        if self.DEBUG:
-            print("Running checks...")
-            
-        ## checking
-        try:
-            assert self.__check_model__()
-            assert self.__check_data_in__()
-        except Exception as e:
-            print(f'Error: {e}')
-            return
-        
-        if self.DEBUG:
-            print("Passing out...")
-        # offloading data
-        for key, patches in self.data_out.items():
-            self.data_out[key] = self.__offload_data_to_device__(patches)
-        
-        if self.DEBUG:
-            print('Gone to sleep...')
-            
-        with tqdm(total = len(self.data_out['data']), 
+    def __go_to_sleep__(self)->NoReturn:                   
+        with tqdm(total = len(self.data_out), 
                   desc='Dreaming of nature...', 
-                  file = sys.stdout) as pbar:
-            for i, patch in enumerate(self.data_out['data']):
-                # dreaming about nature
-                self.data_out['data'][i] = self.__dream__(patch)
+                  file = sys.stdout,
+                  position=0) as pbar:
+            for key, batch in self.data_out.items():
                 
+                with tqdm(total = len(batch),
+                          desc=f'Currently at {key}...',
+                          file = sys.stdout,
+                          position=1) as subpbar:
+                    
+                    dream_memory:np.ndarray = np.zeros(self.metadata['dream_memory_shape'][key])
+                    for i in range(batch.shape[0]):
+        
+                        # dreaming about nature
+                        dream_memory[i,...] = self.__dream__(batch[i,None,...])
+                        # progress bar update
+                        subpbar.update(1)
+                
+                self.data_out[key] = dream_memory
                 # update progress bar
                 pbar.update(1)
-                
-        if self.DEBUG:
-            print('Waking up...')
-        # fetching data
-        for key, patches in self.data_out.items():
-            self.data_out[key] = self.__fetch_data_from_device__(patches)
-    
-    def __dream__(self, patch:torch.TensorType)->np.ndarray:
-        return self.activation(self.model(patch))
+
+        ## handle pbars
+        pbar.color = 'green'
+        subpbar.color = 'green'
+        pbar.set_description('Dreaming of nature... Done!')
+        subpbar.set_description(f'Currently at {key}... Done!')
+        
+        pbar.close()
+        subpbar.close()
     
     #%% Data processing utils
     def __adjust_img_size__(self)->NoReturn:
@@ -270,15 +342,24 @@ class Oneiros(FileHandlerCore):
         if self.DEBUG:
             print('Unpatchifying images...')
         for key, patches in self.data_out.items():
-            self.data_out[key] = unpatchify(patches = patches, 
-                                            imsize = self.data_in['data'].shape)
+            self.data_out[key] = {
+                                    f"feature_{i}" : unpatchify(patches = patches[:,i,:,:].reshape(*self.metadata['patch_array_shape'][key],
+                                                                                                   *self.metadata['patch_size']),
+                                                                imsize = self.data_in[key].shape[1:]) 
+                                    for i in range(patches.shape[1])
+                                  }
     
     def __reshape_imgs__(self)->NoReturn:
         if self.DEBUG:
             print('Reshaping images...')
         for key, patches in self.data_out.items():
-            num_tmp = int((np.floor(self.data_in[key].shape[1]/self.metadata['patch_size'][0]))) * int((np.floor(self.data_in[key].shape[2]/self.metadata['patch_size'][1])))
-            self.data_out[key] = np.reshape(patches,(num_tmp, 1, self.metadata['patch_size'][0], self.metadata['patch_size'][1]))
+            self.data_out[key] = np.reshape(a = patches,
+                                            newshape = (self.metadata['patch_array_shape'][key][0]*self.metadata['patch_array_shape'][key][1], 
+                                                        1, 
+                                                        self.metadata['patch_size'][0], 
+                                                        self.metadata['patch_size'][1]
+                                                        )
+                                            )
     
     def __normalize_imgs__(self)->NoReturn:
         if self.DEBUG:
@@ -292,18 +373,49 @@ class Oneiros(FileHandlerCore):
         for key, img in self.data_out.items():
             self.data_out[key] = (img - np.mean(img))/np.std(img)
             
+    def __memorize_dream_shape__(self, out_channels:int)->NoReturn:
+        if self.DEBUG:
+            print('Memorizing dream shape...')
+        self.metadata['dream_memory_shape'] = {key : (batch.shape[0], out_channels, *self.metadata['patch_size']) for key, batch in self.data_out.items()}
+        
+    def __memorize_patch_array_shape__(self)->NoReturn:
+        if self.DEBUG:
+            print('Memorizing patch array shape...')
+        self.metadata['patch_array_shape'] = {key :(int((np.floor(self.data_in[key].shape[1]/self.metadata['patch_size'][0]))),
+                                                    int((np.floor(self.data_in[key].shape[2]/self.metadata['patch_size'][1])))) for key in self.data_out.keys()}
+            
     #%% Helper Functions
-    def __offload_data_to_device__(self, data:np.ndarray)->torch.TensorType:
+    def __offload_data_to_device__(self)->torch.TensorType:
         if self.DEBUG:
             print('Offloading data...')
+        for key, patches in self.data_out.items():
+            self.data_out[key] = self.__cast_data_to_tensor__(patches)
+
+    def __cast_data_to_tensor__(self, data:np.ndarray)->torch.TensorType:
         return torch.tensor(data, dtype = self.metadata["tensortype"]).to(self.device)
     
-    def __fetch_data_from_device__(self, data:torch.TensorType)->np.ndarray:
-        if self.DEBUG:
-            print('Fetching data...')
+    def __dreamcatcher__(self, data:torch.TensorType)->np.ndarray:
         return data.cpu().detach().numpy()
     
-    #%% checks
+    def __dream__(self, patch:torch.TensorType)->np.ndarray:
+        if not torch.any(patch):
+            return patch.cpu().detach().numpy()
+        return self.activation(self.model(patch)).cpu().detach().numpy()
+    
+    #%% checks   
+    def __run_checks__(self)->NoReturn:
+        if self.DEBUG:
+            print('Running checks...')
+        try:
+            assert self.__check_model__()
+            assert self.__check_data_in__()
+            assert self.__check_data_out__()
+            assert self.__check_dream_memory__()
+            assert self.__check_patch_array_shape__()
+        except Exception as e:
+            print(f'Error: {e}')
+            return
+        
     def __check_model__(self)->bool:
         if self.DEBUG:
             print('Checking model...')
@@ -317,6 +429,30 @@ class Oneiros(FileHandlerCore):
             print('Checking data...')
         if len(self.data_in) == 0:
             print('Error: Data not loaded. Please load the data before proceeding.')
+            return False
+        return True
+    
+    def __check_data_out__(self)->bool:
+        if self.DEBUG:
+            print('Checking data...')
+        if len(self.data_out) == 0:
+            print('Error: Data not processed. Please process the data before proceeding.')
+            return False
+        return True
+    
+    def __check_dream_memory__(self)->bool:
+        if self.DEBUG:
+            print('Checking dream memory...')
+        if self.metadata['dream_memory_shape'] == None:
+            print('Error: Dream memory not set. Please set the dream memory before proceeding.')
+            return False
+        return True
+    
+    def __check_patch_array_shape__(self)->bool:
+        if self.DEBUG:
+            print('Checking patch shape...')
+        if self.metadata['patch_array_shape'] == None:
+            print('Error: Patch size not set. Please set the patch size before proceeding.')
             return False
         return True
 
