@@ -181,7 +181,24 @@ class MSSSIM(torch.nn.Module):
         return msssim(img1, img2, window_size=self.window_size, size_average=self.size_average, normalize=True)
 
 
-def Segment_SMLM(IMG_path:str = None, patchsize:tuple = (256,256), predictor = None, MIC_threshold:float = 0.2, LNP_threshold:float = 0.0, ACT_threshold:float = 0.2, lower_dyn_th:int = -1, upper_dyn_th:int = 2, device = torch.device("cuda"), activation = torch.nn.Identity(), plot_results:bool = True, bin_diff:bool = True, evaluate:bool = False, standardize:bool = False, plot_two_channel_images:bool = False, save_predictions:bool = False, out_path:str = None, filename:str = None):
+def Segment_SMLM(IMG_path:str = None, 
+                 patchsize:tuple = (256,256), 
+                 predictor = None, 
+                 MIC_threshold:float = 0.2, 
+                 LNP_threshold:float = 0.0, 
+                 ACT_threshold:float = 0.2, 
+                 lower_dyn_th:int = -1,
+                 upper_dyn_th:int = 2, 
+                 device = torch.device("cuda"),
+                 activation = torch.nn.Identity(),
+                 plot_results:bool = True, 
+                 bin_diff:bool = True,
+                 evaluate:bool = False,
+                 standardize:bool = False, 
+                 plot_two_channel_images:bool = False,
+                 save_predictions:bool = False,
+                 out_path:str = None,
+                 filename:str = None):
     
     while not os.path.isfile(IMG_path):
         print('Please pick an image to segment!')
@@ -435,7 +452,28 @@ def Segment_SMLM(IMG_path:str = None, patchsize:tuple = (256,256), predictor = N
             ]))
         
     
-def Segment_Image(IMG_path:str = None, patchsize:tuple = (256,256), predictor = None, th_ER:float = 0.2, th_MIC:float = 0.2, th_CLA:float = 0.2, device = torch.device("cuda"), lower_dyn_th:int = 0, upper_dyn_th:int = 1, activation = torch.nn.Identity(), test_zero:bool = False, ER_DIL_PRE = None, kernel_size = (2,2), iter:int = 1, return_imgs = False, revert:bool = False, normalize:bool = False, standardize:bool = False, image_overview:bool = True, save_predictions:bool = False, filename:str = None, out_path:str = None):
+def Segment_Image(IMG_path:str = None, 
+                  patchsize:tuple = (256,256),
+                  predictor = None, 
+                  th_ER:float = 0.2, 
+                  th_MIC:float = 0.2,
+                  th_CLA:float = 0.2, 
+                  device = torch.device("cuda"), 
+                  lower_dyn_th:int = 0, 
+                  upper_dyn_th:int = 1, 
+                  activation = torch.nn.Identity(), 
+                  test_zero:bool = False, 
+                  R_DIL_PRE = None, 
+                  kernel_size = (2,2),
+                  iter:int = 1,
+                  return_imgs = False,
+                  revert:bool = False,
+                  normalize:bool = False, 
+                  standardize:bool = False,
+                  image_overview:bool = True,
+                  save_predictions:bool = False,
+                  filename:str = None, 
+                  out_path:str = None):
 
     def __normalize(arr):
         return arr/np.max(arr)
