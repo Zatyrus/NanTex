@@ -28,6 +28,8 @@ class DataGenerator(Dataset):
                  chunks:int = 8, 
                  normalize:bool = False, 
                  standardize:bool = False, 
+                 replace_raw:bool = True,
+                 replace_val:bool = False,
                  batchsize:int = 32, 
                  load_per_sample:int = 8, 
                  dtype_in:np.dtype = np.uint16,
@@ -74,6 +76,8 @@ class DataGenerator(Dataset):
         self.__dtype_out = dtype_out
         self.__dtype_masks = dtype_masks
         self.__is_val = is_val
+        self.__replace_raw = replace_raw
+        self.__replace_val = replace_val
         
         ## Check for padding if no augmentation pipeline is submitted
         if not aug_line:
@@ -104,20 +108,23 @@ class DataGenerator(Dataset):
         Returns:
             np.ndarray: X - samples, y - ground truth
         """
-        if self.__BatchSize > 1:            
+        if self.__BatchSize > 1:    
+            # setup the batch
+            X = np.empty((self.__BatchSize, self.__in_channels, *self.__dim), dtype = self.__dtype_out)
+            y = np.empty((self.__BatchSize, self.__out_channels, *self.__dim), dtype = self.__dtype_out)
+                    
             if self.__is_val:            
-                tmp_list = self.__gen.choice(a = np.arange(len(self.__files)), 
+                tmp_list = self.__gen.choice(a = self.__files, 
                                             size = int(self.__BatchSize//self.__Load_per_Sample), 
-                                            replace = True)
+                                            replace = self.__replace_val)
             else:
-                tmp_list = self.__gen.choice(a = np.arange(len(self.__files)), 
+                tmp_list = self.__gen.choice(a = self.__files, 
                                             size = int(self.__BatchSize//self.__Load_per_Sample), 
-                                            replace = False)
+                                            replace = self.__replace_raw)
             
-            for i in range(self.__BatchSize):
-                if i % self.__Load_per_Sample == 0:
-                    X[i,...], y[i,...] = self.__data_generation__(file = self.__files[tmp_list[int(i//self.__Load_per_Sample)]])
-                X[i,...], y[i,...] = self.__data_generation__()
+            for i, in_file in enumerate(tmp_list):
+                for j in range(self.__Load_per_Sample):
+                    X[i*self.__Load_per_Sample + j,...], y[i*self.__Load_per_Sample + j,...] = self.__data_generation__(file = in_file)
         
         elif self.__BatchSize == 1:
             X, y = self.__data_generation__(file = self.__files[index])
@@ -246,7 +253,7 @@ class BatchDataLoader_Handler():
         if not self.__check_sources__():
             if self.DEBUG:
                 print("Data sources are not available.")
-                self.__call_sources__()
+            self.__call_sources__()
         
     @classmethod
     def from_config(cls, 
@@ -305,7 +312,11 @@ class BatchDataLoader_Handler():
             "dtype_out":"float32",    # Data type of the output data <- Leave it.
             "dtype_masks":"uint8",    # Data type of the masks <- Leave it.
             "gen_type":"DXSM",        # Type of random number generator <- Leave it, if you don't know what you are doing.
-            "gen_seed":None           # Seed for the random number generator <- Use for reproducibility.
+            "gen_seed":None,          # Seed for the random number generator <- Use for reproducibility.
+            "pin_memory":True,        # Flag to pin memory <- Leave it.
+            "persistant_workers":True,# Flag to keep workers alive <- Leave it.
+            "replace_raw":True,       # Flag to replace raw data <- Leave it.
+            "replace_val":False       # Flag to replace validation data <- Leave it.
             }
         
         # Dump the configuration file       
@@ -359,6 +370,8 @@ class BatchDataLoader_Handler():
                                   val_batchsize:int = 8,
                                   train_shuffle:bool = True,
                                   val_shuffle:bool = True,
+                                  replace_raw:bool = True,
+                                  replace_val:bool = False,
                                   normalize:bool = False,
                                   standardize:bool = False,
                                   num_train_workers:int = 6,
@@ -448,7 +461,9 @@ class BatchDataLoader_Handler():
                                           dtype_masks = dtype_masks,
                                           gen_type = gen_type,
                                           gen_seed = gen_seed,
-                                          is_val = False)
+                                          is_val = False,
+                                          replace_raw=replace_raw,
+                                          replace_val=replace_val)
             
             val_dataset = DataGenerator(files = val_source, 
                                         dim = val_dim, 
@@ -465,7 +480,9 @@ class BatchDataLoader_Handler():
                                         dtype_masks = dtype_masks,
                                         gen_type = gen_type,
                                         gen_seed = gen_seed,
-                                        is_val = True)
+                                        is_val = True,
+                                        replace_raw=replace_raw,
+                                        replace_val=replace_val)
             
             if self.DEBUG:
                 print("Autobatch Data Generators created.")
@@ -509,7 +526,9 @@ class BatchDataLoader_Handler():
                                           dtype_masks = dtype_masks,
                                           gen_type = gen_type,
                                           gen_seed = gen_seed,
-                                          is_val = False)
+                                          is_val = False,
+                                          replace_raw=replace_raw,
+                                          replace_val=replace_val)
             
             val_dataset = DataGenerator(files = val_source, 
                                         dim = val_dim, 
@@ -526,7 +545,9 @@ class BatchDataLoader_Handler():
                                         dtype_masks = dtype_masks,
                                         gen_type = gen_type,
                                         gen_seed = gen_seed,
-                                        is_val = True)
+                                        is_val = True,
+                                        replace_raw=replace_raw,
+                                        replace_val=replace_val)
             
             if self.DEBUG:
                 print("Non-Autobatched Data Generators created.")
