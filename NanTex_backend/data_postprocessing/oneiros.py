@@ -90,13 +90,15 @@ class Oneiros(FileHandlerCore):
         self.metadata.update(
             {
                 "feature_cleanup_threshodls" : {
+                    "feature_0": 0.1,
                     "feature_1": 0.1,
-                    "feature_2": 0.1,
-                    "feature_3": 0.1
+                    "feature_2": 0.1
                     },
                 "dynamic_thresholds": {
+                    "auto_calculate": True,
                     "upper": 3,
-                    "lower": -2
+                    "lower": -2,
+                    "std_factor": 2
                     },
                 "patch_size": (256, 256),
                 "dream_memory_shape" : None,
@@ -342,7 +344,7 @@ class Oneiros(FileHandlerCore):
         if self.DEBUG:
             print('Unpatchifying images...')
         for key, patches in self.data_out.items():
-            self.data_out[key] = {
+            self.data_out[key] = {  
                                     f"feature_{i}" : unpatchify(patches = patches[:,i,:,:].reshape(*self.metadata['patch_array_shape'][key],
                                                                                                    *self.metadata['patch_size']),
                                                                 imsize = self.data_in[key].shape[1:]) 
@@ -383,6 +385,55 @@ class Oneiros(FileHandlerCore):
             print('Memorizing patch array shape...')
         self.metadata['patch_array_shape'] = {key :(int((np.floor(self.data_in[key].shape[1]/self.metadata['patch_size'][0]))),
                                                     int((np.floor(self.data_in[key].shape[2]/self.metadata['patch_size'][1])))) for key in self.data_out.keys()}
+        
+    def __apply_cleanup_thresholds__(self)->NoReturn:
+        if self.DEBUG:
+            print('Applying thresholds...')
+        for key, dream in self.data_out.items():
+            for feature_key, feature in dream.items():
+                feature[feature < self.metadata['feature_cleanup_threshodls'][feature_key]] = 0
+                
+    def __apply_dynamic_thresholds__(self)->NoReturn:
+        if self.DEBUG:
+            print('Applying dynamic thresholds...')
+        
+        for key, dream in self.data_out.items():
+            for feature_key, feature in dream.items():
+                tmp_dyn_th = self.__generate_dynamic_thresholds__(feature)
+                feature[feature <= tmp_dyn_th[0]] = 0
+                feature[feature >= tmp_dyn_th[1]] = 0
+                
+    def __generate_dynamic_thresholds__(self, feature:np.ndarray)->Tuple[float, float]:
+        if self.DEBUG:
+            print('Generating dynamic thresholds...')
+            
+        try:
+            # get histogram
+            counts, bins = np.histogram(feature.ravel(), bins=100)
+            
+            if not self.metadata['dynamic_thresholds']["auto_calculate"]:
+                    return (bins[np.argmax(counts)] - self.metadata['dynamic_thresholds']['lower'], 
+                            bins[np.argmax(counts)] + self.metadata['dynamic_thresholds']['upper'])
+            
+            return (bins[np.argmax(counts)] - self.metadata['dynamic_thresholds']['std_factor'], 
+                    bins[np.argmax(counts)] + self.metadata['dynamic_thresholds']['std_factor'])
+        
+        except Exception as e:
+            print(f'Error: {e}')
+            return (0, 0)
+        
+    def __append_originals__(self)->NoReturn:
+        if self.DEBUG:
+            print('Appending originals...')
+        for key, dream in self.data_out.items():
+            self.data_out[key].update({"original": self.data_in[key][0]})
+        
+    def __compile_dream__(self)->NoReturn:
+        if self.DEBUG:
+            print('Compiling dream...')
+        self.__apply_cleanup_thresholds__()
+        self.__apply_dynamic_thresholds__()
+        self.__append_originals__()
             
     #%% Helper Functions
     def __offload_data_to_device__(self)->torch.TensorType:
