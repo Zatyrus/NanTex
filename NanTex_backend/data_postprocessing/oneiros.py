@@ -2,6 +2,7 @@
 import sys
 import torch
 import numpy as np
+import pathlib as pl
 from skimage import io
 import matplotlib.pyplot as plt
 from patchify import patchify, unpatchify
@@ -89,7 +90,7 @@ class Oneiros(FileHandlerCore):
             print('Setting up metadata...')
         self.metadata.update(
             {
-                "feature_cleanup_threshodls" : {
+                "feature_static_threshodls" : {
                     "feature_0": 0.1,
                     "feature_1": 0.1,
                     "feature_2": 0.1
@@ -106,7 +107,10 @@ class Oneiros(FileHandlerCore):
                 "standardize": True,
                 "normalize": False,
                 "tensortype": torch.float32,
-                "weights_only": True
+                "weights_only": True,
+                "append_originals": True,
+                "apply_static_thresholds": True,
+                "apply_dynamic_thresholds": True
             }
         )
     
@@ -236,7 +240,7 @@ class Oneiros(FileHandlerCore):
     #%% Data Processing
     def dream(self)->NoReturn:
         if self.DEBUG:
-            print("Passing out...")
+            print("Going to bed...")
             
         # run pre-processing
         self.__pre_process_data__()
@@ -249,7 +253,7 @@ class Oneiros(FileHandlerCore):
         
         # go to sleep
         if self.DEBUG:
-            print('Going to sleep...')
+            print('Passing out...')
         self.__go_to_sleep__()
         
         # reconstruct images
@@ -258,7 +262,18 @@ class Oneiros(FileHandlerCore):
         self.__post_process_data__()
     
     def __post_process_data__(self)->NoReturn:
-        pass
+        if self.DEBUG:
+            print('Wrapping up dreams...')
+
+        # unpatchify images
+        self.__unpatchify_imgs__()
+
+        # apply thresholds
+        self.__apply_thresholds__()
+
+        # append originals
+        if self.metadata['append_originals']:
+            self.__append_originals__()
     
     def __pre_process_data__(self)->NoReturn:
         if self.DEBUG:
@@ -386,12 +401,12 @@ class Oneiros(FileHandlerCore):
         self.metadata['patch_array_shape'] = {key :(int((np.floor(self.data_in[key].shape[1]/self.metadata['patch_size'][0]))),
                                                     int((np.floor(self.data_in[key].shape[2]/self.metadata['patch_size'][1])))) for key in self.data_out.keys()}
         
-    def __apply_cleanup_thresholds__(self)->NoReturn:
+    def __apply_static_thresholds__(self)->NoReturn:
         if self.DEBUG:
             print('Applying thresholds...')
         for key, dream in self.data_out.items():
             for feature_key, feature in dream.items():
-                feature[feature < self.metadata['feature_cleanup_threshodls'][feature_key]] = 0
+                feature[feature < self.metadata['feature_static_threshodls'][feature_key]] = 0
                 
     def __apply_dynamic_thresholds__(self)->NoReturn:
         if self.DEBUG:
@@ -422,18 +437,21 @@ class Oneiros(FileHandlerCore):
             print(f'Error: {e}')
             return (0, 0)
         
+    def __apply_thresholds__(self)->NoReturn:
+        if self.DEBUG:
+            print('Applying thresholds...')
+        
+        # apply thresholds
+        order = [self.__apply_dynamic_thresholds__, self.__apply_static_thresholds__]
+        for func in order:
+            if self.metadata[func.__name__.split('__')[1]]:
+                func()
+
     def __append_originals__(self)->NoReturn:
         if self.DEBUG:
             print('Appending originals...')
         for key, dream in self.data_out.items():
             self.data_out[key].update({"original": self.data_in[key][0]})
-        
-    def __compile_dream__(self)->NoReturn:
-        if self.DEBUG:
-            print('Compiling dream...')
-        self.__apply_cleanup_thresholds__()
-        self.__apply_dynamic_thresholds__()
-        self.__append_originals__()
             
     #%% Helper Functions
     def __offload_data_to_device__(self)->torch.TensorType:
@@ -453,7 +471,37 @@ class Oneiros(FileHandlerCore):
             return patch.cpu().detach().numpy()
         return self.activation(self.model(patch)).cpu().detach().numpy()
     
-    #%% checks   
+#%% Visualization
+# yet to come
+
+#%% Export
+    def export(self, export_path:str, type:str)->NoReturn:
+        if self.DEBUG:
+            print('Exporting data...')
+    pass
+
+    def __export_npy__(self, export_path:str)->NoReturn:
+        if self.DEBUG:
+            print('Exporting npy data...')
+        
+        for key, dream in self.data_out.items():
+            out = np.stack([dream[feature] for feature in dream.keys()], axis=1)
+            np.save(export_path + f"\\{key}.npy", out)
+        
+        return True
+    
+    def __export_png__(self, export_path:str)->NoReturn:
+        if self.DEBUG:
+            print('Exporting png data...')
+        
+        for key, dream in self.data_out.items():
+            # create dream directory
+            pl.Path(export_path + f"\\{key}").mkdir(parents=True, exist_ok=True)
+
+            for feature_key, feature in dream.items():
+                io.imsave(export_path + f"\\{key}\\{feature_key}.png", feature)
+
+#%% checks   
     def __run_checks__(self)->NoReturn:
         if self.DEBUG:
             print('Running checks...')
