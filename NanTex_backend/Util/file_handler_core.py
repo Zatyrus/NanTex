@@ -1,6 +1,7 @@
 ## Dependencies
 import os
 import warnings
+import pathlib as pl
 import numpy as np
 from skimage import io
 from abc import ABC, abstractmethod
@@ -58,8 +59,9 @@ class FileHandlerCore(ABC):
 
     #%% Path Handling
     def __call_outpath__(self)->str:
-        if self.data_path_out == None:
+        if (self.data_path_out == None) or (self.data_path_out == 'null') or (self.data_path_out == ''):
             return None
+        pl.Path(f"{self.data_path_out}/{self.mode}").mkdir(exist_ok = True, parents = True)
         return f"{self.data_path_out}/{self.mode}"
     
     def __retrieve_outpath__(self)->str:
