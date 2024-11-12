@@ -5,7 +5,7 @@ import pathlib as pl
 import numpy as np
 from skimage import io
 from abc import ABC, abstractmethod
-from typing import Dict, List, NoReturn
+from typing import Dict, List, NoReturn, Callable
 
 ## Custom Dependencies
 from ..Util.pyDialogue import pyDialogue as pD
@@ -16,12 +16,10 @@ class FileHandlerCore(ABC):
     data_paths_in:Dict[str, List[str]]
     data_in:Dict[str, np.ndarray]
     data_path_out:str
-    data_type:str
 
     DEBUG:bool
     mode:str
-    
-    
+
     def __post_init__(self)->NoReturn:
         try:
             self.__load_data__()
@@ -35,27 +33,39 @@ class FileHandlerCore(ABC):
     def __load_data__(self) -> None:
         if self.DEBUG:
             print('Loading data...')
+            
         ## check for datatype
-        if self.data_type == 'npy':
-            self.__load_npy__()
-        elif self.data_type in ['png', 'jpg', 'jpeg']:
-            self.__load_img__()
-        else:
-            warnings.warn('Data type not supported yet...')
+        for key, path in self.data_paths_in.items():
+            self.data_in[key] = self.__load_factory__(path)(path)
     
-    def __load_npy__(self) -> None:
+    def __load_factory__(self, file:str) -> Callable:
+        match file.split('.')[-1]:
+            case 'npy':
+                return self.__load_npy__
+            case 'png' | 'jpg' | 'jpeg':
+                return self.__load_img__
+            case _:
+                return self.__load_catch__
+    
+    #%% Data Loading Functions
+    def __load_npy__(self, file_path:str) -> np.ndarray:
         if self.DEBUG:
-            print('Loading npy data...')
+            print(f"Loading npy data from {file_path}...")
+        return np.load(file_path)
             
-        for key, value in self.data_paths_in.items():
-            self.data_in[key] = [np.load(path) for path in value]
-            
-    def __load_img__(self) -> None:
+    def __load_img__(self, file_path:str) -> np.ndarray:
         if self.DEBUG:
-            print('Loading image data...')
-        
-        for key, value in self.data_paths_in.items():
-            self.data_in[key] = [io.imread(path) for path in value]
+            print(f"Loading image data from {file_path}...")
+        return io.imread(file_path)
+    
+    def __load_catch__(self, *args, **kwargs) -> NoReturn:
+        if self.DEBUG:
+            try:
+                print(f"Skipping {args}...")
+                print(f"Skipping {kwargs['file_path']}...")
+            except:
+                print('Skipping...')
+        raise Warning('Data type not supported yet...')
 
     #%% Path Handling
     def __call_outpath__(self)->str:

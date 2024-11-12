@@ -96,7 +96,6 @@ class OverlayGenerator(FileHandlerCore):
     
     mode:str
     multi_core:bool
-    data_type:str
     metadata:Dict[str, Any]
     DEBUG:bool
     
@@ -105,8 +104,7 @@ class OverlayGenerator(FileHandlerCore):
     def __init__(self, 
                  data_paths_in:Dict[str, List[str]],
                  data_path_out:str = None, 
-                 mode:str = 'overlay', 
-                 data_type:str = 'npy',
+                 mode:str = 'overlay',
                  multi_core:bool = False,
                  DEBUG:bool = False
                  ) -> None:
@@ -119,7 +117,6 @@ class OverlayGenerator(FileHandlerCore):
         # control variables
         self.mode = mode
         self.multi_core = multi_core
-        self.data_type = data_type
         self.DEBUG = DEBUG
         
         # internal variables

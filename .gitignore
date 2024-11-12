@@ -68,6 +68,15 @@ cover/
 *.docx
 *.html
 
+# legacy
+*.bak
+*.old
+*.orig
+*.rej
+*.swp
+*.tmp
+*.tmp.*
+
 # Django stuff:
 *.log
 local_settings.py

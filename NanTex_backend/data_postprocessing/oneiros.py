@@ -37,15 +37,16 @@ class Oneiros(FileHandlerCore):
     DEBUG:bool
     mode:str
     metadata:Dict[str, Any]
-    data_type:str
+    shape_adjuster:int
     
     model:Optional[torch.nn.Module]
+    num_features:int
     
     def __init__(self,
+                 num_features:int,
                  data_paths_in:Dict[str, List[str]],
                  data_path_out:str = None,
                  mode:str = 'has_ground_truth',
-                 data_type:str = 'npy',
                  DEBUG:bool = False
                  ) -> None:
         # data variables
@@ -55,13 +56,16 @@ class Oneiros(FileHandlerCore):
         self.data_dream = {}
         self.data_out = {}
         
+        # model variables
+        self.num_features = num_features
+
         # control variables
         self.DEBUG = DEBUG
         self.mode = mode
-        self.data_type = data_type
         
         # internal variables
         self.metadata = {}
+        self.shape_adjuster = 0
         
         # DL variables
         self.model = None
@@ -69,30 +73,20 @@ class Oneiros(FileHandlerCore):
         # Call from parent class
         self.__post_init__()
     
+    @override
     def __post_init__(self)->NoReturn:
         try:
             self.__load_data__()
             self.__setup_metadata__()
-            self.data_path_out = ''
+            
+            if self.mode == 'has_ground_truth':
+                self.shape_adjuster = 1
+            
+            if self.DEBUG:
+                print('Oneiros Initialized...')
             
         except Exception as e:
             print(f'Error: {e}')
-    
-    @override
-    def __load_npy__(self) -> None:
-        if self.DEBUG:
-            print('Loading npy data...')
-            
-        for key, path in self.data_paths_in.items():
-            self.data_in[key] = np.load(path)
-              
-    @override  
-    def __load_img__(self) -> None:
-        if self.DEBUG:
-            print('Loading image data...')
-        
-        for key, path in self.data_paths_in.items():
-            self.data_in[key] = io.imread(path)
     
     @override
     def __setup_metadata__(self)->NoReturn:
@@ -130,7 +124,7 @@ class Oneiros(FileHandlerCore):
     
     #%% Classmethods
     @classmethod
-    def from_explorer(cls, mode:str, **kwargs)->'Oneiros':
+    def from_explorer(cls, num_features:int, mode:str, **kwargs)->'Oneiros':
         ## initialize
         data_paths_in:Dict[str, List[str]] = {}
         
@@ -149,7 +143,8 @@ class Oneiros(FileHandlerCore):
         files_tmp = pD.askFILES(query_title = "Please select the data files")
         data_paths_in.update({f"dream_{i}": files_tmp[i] for i in range(len(files_tmp))})
 
-        return cls(data_paths_in = data_paths_in, 
+        return cls(num_features = num_features,
+                   data_paths_in = data_paths_in, 
                    mode = mode, **kwargs)
         
     @classmethod
@@ -218,7 +213,7 @@ class Oneiros(FileHandlerCore):
         ## setup model
         self.__setup_model__(model, activation, device)
         
-    def quickstart_model(self, state_dict_path:Optional[str] = None)->NoReturn:
+    def jumpstart_model(self, state_dict_path:Optional[str] = None)->NoReturn:
         from ..deep_learning.dl_model_assembly import assembled_model, final_layer_config
         
         if self.DEBUG:
@@ -245,7 +240,6 @@ class Oneiros(FileHandlerCore):
             print("This may be due to the model not being setup.")
             print("Please call 'setup_model' and try again.")
             
-    
     #%% Data Processing
     def dream(self)->NoReturn:
         # run pre-processing
@@ -292,7 +286,7 @@ class Oneiros(FileHandlerCore):
         self.__reshape_imgs__()
         
         # memorize dream shape
-        self.__memorize_dream_shape__(self.__num_features__())
+        self.__memorize_dream_shape__(self.num_features)
         
     def __post_process_data__(self)->NoReturn:
         if self.DEBUG:
@@ -348,26 +342,31 @@ class Oneiros(FileHandlerCore):
     def __adjust_img_size__(self)->NoReturn:
         if self.DEBUG:
             print('Adjusting image size...')
-            
         for key, img in self.data_in.items():
-            if (img.shape[1] % self.metadata['patch_size'][0] != 0) or (img.shape[2] % self.metadata['patch_size'][1] != 0):
-                self.data_in[key] = img[:,:-(img.shape[1] % self.metadata['patch_size'][0]), :-(img.shape[2] % self.metadata['patch_size'][1])]
+            if (img.shape[0 + self.shape_adjuster] % self.metadata['patch_size'][0] != 0) or (img.shape[1 + self.shape_adjuster] % self.metadata['patch_size'][1] != 0):
+                self.data_in[key] = img[:,:-(img.shape[0 + self.shape_adjuster] % self.metadata['patch_size'][0]), :-(img.shape[1 + self.shape_adjuster] % self.metadata['patch_size'][1])]
             else:
                 self.data_in[key] = img
     
     def __strip_imgs__(self)->NoReturn:
         if self.DEBUG:
             print('Stripping images...')
-        for key, img in self.data_in.items():
-            self.data_dream[key] = img[0]
+            
+        if self.mode == 'has_ground_truth':
+            for key, img in self.data_in.items():
+                self.data_dream[key] = img[0]
+                
+        elif self.mode == 'no_ground_truth':
+            for key, img in self.data_in.items():
+                self.data_dream[key] = img
     
     def __patchify_imgs__(self)->NoReturn:
         if self.DEBUG:
             print('Patchifying images...')
         for key, img in self.data_dream.items():
             self.data_dream[key] = patchify(image = img,
-                                          patch_size = self.metadata['patch_size'], 
-                                          step=self.metadata['patch_size'][1])    
+                                            patch_size = self.metadata['patch_size'], 
+                                            step=self.metadata['patch_size'][1])    
     
     def __unpatchify_imgs__(self)->NoReturn:
         if self.DEBUG:
@@ -376,7 +375,7 @@ class Oneiros(FileHandlerCore):
             self.data_out[key] = {  
                                     f"feature_{i}" : unpatchify(patches = patches[:,i,:,:].reshape(*self.metadata['patch_array_shape'][key],
                                                                                                    *self.metadata['patch_size']),
-                                                                imsize = self.data_in[key].shape[1:]) 
+                                                                imsize = self.data_in[key].shape[0 + self.shape_adjuster:]) 
                                     for i in range(patches.shape[1])
                                   }
     
@@ -418,8 +417,8 @@ class Oneiros(FileHandlerCore):
     def __memorize_patch_array_shape__(self)->NoReturn:
         if self.DEBUG:
             print('Memorizing patch array shape...')
-        self.metadata['patch_array_shape'] = {key :(int((np.floor(self.data_in[key].shape[1]/self.metadata['patch_size'][0]))),
-                                                    int((np.floor(self.data_in[key].shape[2]/self.metadata['patch_size'][1])))) for key in self.data_dream.keys()}
+        self.metadata['patch_array_shape'] = {key :(int((np.floor(self.data_in[key].shape[0 + self.shape_adjuster]/self.metadata['patch_size'][0]))),
+                                                    int((np.floor(self.data_in[key].shape[1 + self.shape_adjuster]/self.metadata['patch_size'][1])))) for key in self.data_dream.keys()}
         
     def __apply_static_thresholds__(self)->NoReturn:
         if self.DEBUG:
@@ -487,8 +486,14 @@ class Oneiros(FileHandlerCore):
     def __append_original_overlays__(self)->NoReturn:
         if self.DEBUG:
             print('Appending original overlays...')
-        for key, dream in self.data_out.items():
-            self.data_out[key].update({"original_overlay": self.data_in[key][0]})
+        
+        if self.mode == 'has_ground_truth':
+            for key, dream in self.data_out.items():
+                self.data_out[key].update({"original_overlay": self.data_in[key][0]})
+        
+        elif self.mode == 'no_ground_truth':
+            for key, dream in self.data_out.items():
+                self.data_out[key].update({"original_overlay": self.data_in[key]})
             
     def __append_original_features__(self)->NoReturn:
         if self.DEBUG:
@@ -505,7 +510,7 @@ class Oneiros(FileHandlerCore):
             print('Appending dreams...')
         for key, dream in self.data_out.items():
             # construct dream overlay
-            out:np.ndarray = np.sum([dream[f"feature_{i}"] for i in range(self.__num_features__())], axis=0)
+            out:np.ndarray = np.sum([dream[f"feature_{i}"] for i in range(self.num_features)], axis=0)
             out = self.__cast_to_img__(out)
             self.data_out[key].update({"dream_overlay": out})
             
@@ -542,14 +547,42 @@ class Oneiros(FileHandlerCore):
     def __cast_to_img__(self, data:np.ndarray)->np.ndarray:
         return (self.__normalize__(data) * np.iinfo(self.metadata['out_type']).max).astype(self.metadata['out_type'])
     
-    def __num_features__(self)->int:
-        return self.data_in['dream_0'].shape[0] - 1
-    
     def __num_panels__(self)->int:
-        return self.data_in['dream_0'].shape[0]
+        return self.num_features + 1
     
     def __num_dreams__(self)->int:
         return len(self.data_in.keys())
+    
+#%% Convenience Functions
+    def change_mode(self, mode:str)->NoReturn:
+        if self.DEBUG:
+            print('Changing mode...')
+        self.mode = mode
+    
+    def change_num_features(self, num_features:int)->NoReturn:
+        if self.DEBUG:
+            print('Changing number of features...')
+        self.num_features = num_features
+    
+    def update_metadata(self, metadata:Dict[str, Any])->NoReturn:
+        if self.DEBUG:
+            print('Updating metadata...')
+        self.metadata.update(metadata)
+    
+    def change_input_data(self, data_paths_in:Dict[str, List[str]])->NoReturn:
+        if self.DEBUG:
+            print('Changing input data...')
+        self.data_paths_in = data_paths_in
+    
+    def call_new_input_data(self)->NoReturn:
+        if self.DEBUG:
+            print('Calling new input data...')
+        self.__load_data__()
+    
+    def set_DEBUG(self, DEBUG:bool)->NoReturn:
+        if self.DEBUG:
+            print('Changing verbosity...')
+        self.DEBUG = DEBUG
     
 #%% Visualization
     def visualize(self,
@@ -597,7 +630,7 @@ class Oneiros(FileHandlerCore):
             self.__append_original_overlays__()
 
         # plot
-        for i in range(0, self.__num_panels__() - 1):
+        for i in range(0, self.num_features):
             axs[0,i].imshow(self.__cast_to_img__(self.data_in[f"dream_{dream_no}"][i + 1]), cmap=cmap) # quick fix for ground truth shape
             axs[0,i].set_title(f"Ground Truth {i}")
 
@@ -635,19 +668,20 @@ class Oneiros(FileHandlerCore):
                                            ticks:bool,
                                            return_fig_axs:bool
                                            )->Union[Tuple[plt.Figure, plt.Axes], NoReturn]:
-        fig, axs = plt.subplots(1, self.__num_panels__(), figsize=(5*(self.__num_panels__() + 1), 5), dpi = 150)
+        
+        fig, axs = plt.subplots(1, self.__num_panels__() + 1, figsize=(5*(self.__num_panels__()) + 1, 5), dpi = 150)
         plt.subplots_adjust(wspace=0.1, hspace=0.1)
         
         # append dream overlay and original
         if not self.metadata['append_dream_overlays']:
             self.__append_dream_overlays__()
-        if not self.metadata['append_originals']:
+        if not self.metadata['append_original_overlays']:
             self.__append_original_overlays__()
         
         # plot
-        for i in range(1, self.__num_panels__()):
-            axs[i].imshow(self.__cast_to_img__(self.data_in[f"dream_{dream_no}"][i]), cmap=cmap)
-            axs[i].set_title(f"Ground Truth {i}")
+        for i in range(0, self.num_features):
+            axs[i + 1].imshow(self.__cast_to_img__(self.data_out[f"dream_{dream_no}"][f"feature_{i}"]), cmap=cmap)
+            axs[i + 1].set_title(f"Feature Dream {i}")
                         
         # add overlays
         axs[0].imshow(self.__cast_to_img__(self.data_out[f"dream_{dream_no}"]["original_overlay"]), cmap=cmap)
@@ -717,6 +751,7 @@ class Oneiros(FileHandlerCore):
             assert self.__check_data_dream__()
             assert self.__check_dream_memory__()
             assert self.__check_patch_array_shape__()
+            assert self.__check_num_features__()
         except Exception as e:
             print(f'Error: {e}')
             return
@@ -775,5 +810,16 @@ class Oneiros(FileHandlerCore):
         if len(self.data_out) == 0:
             print('Error: Data not processed. Please process the data before proceeding.')
             return False
+        return True
+    
+    def __check_num_features__(self)->int:
+        if self.mode == 'has_ground_truth':
+            if self.DEBUG:
+                print('Checking number of features...')
+            try:
+                assert (self.data_in['dream_0'].shape[0] - 1) == self.num_features
+            except Exception as e:
+                print(f'Error: {e}')
+                return False
         return True
 
