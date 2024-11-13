@@ -152,6 +152,17 @@ class OverlayGenerator(FileHandlerCore):
         
         return cls(data_paths_in = data_paths_in, **kwargs)
     
+    @classmethod
+    def from_glob(cls, *args, **kwargs) -> 'OverlayGenerator':
+        data_paths_in:Dict[str, List[str]] = {}
+        
+        for i, arg in enumerate(args):
+            if not isinstance(arg, list):
+                raise ValueError(f'Argument {i} is not a list...')
+            data_paths_in.update({f'feature_{i}':arg})
+            
+        return cls(data_paths_in = data_paths_in, **kwargs)
+    
     #%% Main Functions
     def generate_punchcards(self)->NoReturn:
         ## Reset punchcards

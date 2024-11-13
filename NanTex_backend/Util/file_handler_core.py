@@ -36,6 +36,11 @@ class FileHandlerCore(ABC):
             
         ## check for datatype
         for key, path in self.data_paths_in.items():
+            # path is a list of files
+            if self.__is_iterable__(path):
+                self.data_in[key] = [self.__load_factory__(p)(p) for p in path]
+                continue
+            # path is a single file
             self.data_in[key] = self.__load_factory__(path)(path)
     
     def __load_factory__(self, file:str) -> Callable:
@@ -124,8 +129,27 @@ class FileHandlerCore(ABC):
             return 'null'
         return val
     
+    #%% Helper
+    def __is_iterable__(self, 
+                       obj:object
+                       )->bool:
+        try:
+            iter(obj)
+            return True
+        except:
+            return False
+    
     #%% Metadata Handling
     @abstractmethod
     def __setup_metadata__(self)->NoReturn:
+        pass
+    
+    #%% Abstract Methods
+    @abstractmethod
+    def from_explorer(self)->NoReturn:
+        pass
+    
+    @abstractmethod
+    def from_glob(self)->NoReturn:
         pass
             

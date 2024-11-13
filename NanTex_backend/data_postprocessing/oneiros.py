@@ -1,4 +1,5 @@
 ## Dependencies
+import os
 import sys
 import torch
 import numpy as np
@@ -122,16 +123,16 @@ class Oneiros(FileHandlerCore):
             }
         )
     
-    #%% Classmethods
+    #%% Classmethods Windows
     @classmethod
-    def from_explorer(cls, num_features:int, mode:str, **kwargs)->'Oneiros':
+    def from_explorer(cls, **kwargs)->'Oneiros':
         ## initialize
         data_paths_in:Dict[str, List[str]] = {}
         
         ## check mode
         try:
-            assert isinstance(mode, str)
-            assert mode in ['has_ground_truth', 'no_ground_truth']
+            assert isinstance(kwargs.get('mode'), str)
+            assert kwargs.get('mode') in ['has_ground_truth', 'no_ground_truth']
         except Exception as e:
             print(f'Error: {e}')
             print('Please select a valid mode from the following:')
@@ -143,9 +144,8 @@ class Oneiros(FileHandlerCore):
         files_tmp = pD.askFILES(query_title = "Please select the data files")
         data_paths_in.update({f"dream_{i}": files_tmp[i] for i in range(len(files_tmp))})
 
-        return cls(num_features = num_features,
-                   data_paths_in = data_paths_in, 
-                   mode = mode, **kwargs)
+        return cls(data_paths_in = data_paths_in,
+                   **kwargs)
         
     @classmethod
     def with_ground_truth(cls, **kwargs)->'Oneiros':
@@ -154,6 +154,33 @@ class Oneiros(FileHandlerCore):
     @classmethod
     def without_ground_truth(cls, **kwargs)->'Oneiros':
         return cls.from_explorer(mode = 'no_ground_truth', **kwargs)
+    
+    #%% Classmethods Linux
+    @classmethod
+    def from_glob(cls, *args, **kwargs)->'Oneiros':
+        ## initialize
+        data_paths_in:Dict[str, List[str]] = {}
+        
+        ## check mode
+        try:
+            assert isinstance(kwargs.get('mode'), str)
+            assert kwargs.get('mode') in ['has_ground_truth', 'no_ground_truth']
+        except Exception as e:
+            print(f'Error: {e}')
+            print('Please select a valid mode from the following:')
+            print('1. has_ground_truth')
+            print('2. no_ground_truth')
+            return None
+        
+        # construct dream_dict
+        for i, arg in enumerate(args):
+            if not os.path.isfile(arg):
+                raise ValueError(f"Error: Argument {i} is not a list.")
+            data_paths_in.update({f"dream_{i}": arg})
+        
+        return cls(data_paths_in = data_paths_in,
+                   **kwargs)
+        
     
     #%% Prediction Utils
     def __setup_model__(self,
@@ -711,6 +738,8 @@ class Oneiros(FileHandlerCore):
             print('Exporting data...')    
             
         # check outpath
+        if outpath:
+            self.data_path_out = outpath
         outpath = self.__check_outpath__()
         
         # match out_type
@@ -817,7 +846,8 @@ class Oneiros(FileHandlerCore):
             if self.DEBUG:
                 print('Checking number of features...')
             try:
-                assert (self.data_in['dream_0'].shape[0] - 1) == self.num_features
+                for key, dream in self.data_out.items():
+                    assert (len(dream) - 1) == self.num_features
             except Exception as e:
                 print(f'Error: {e}')
                 return False
