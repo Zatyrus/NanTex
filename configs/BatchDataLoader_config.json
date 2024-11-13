@@ -23,12 +23,16 @@
     "num_train_workers": 4,
     "num_val_workers": 2,
     "prefetch": 8,
-    "autobatch": true,
+    "autobatch": false,
     "in_channels": 1,
     "out_channels": 3,
     "dtype_in": "uint16",
     "dtype_out": "float32",
     "dtype_masks": "uint8",
     "gen_type": "DXSM",
-    "gen_seed": null
+    "gen_seed": null,
+    "pin_memory": true,
+    "persistant_workers": true,
+    "replace_raw": true,
+    "replace_val": false
 }

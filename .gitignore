@@ -12,6 +12,7 @@ test_in/
 test_out/
 model/
 logs/
+legacy/
 
 # Distribution / packaging
 .Python
@@ -61,6 +62,20 @@ cover/
 # Translations
 *.mo
 *.pot
+
+# Filetype extensions
+*.pdf
+*.docx
+*.html
+
+# legacy
+*.bak
+*.old
+*.orig
+*.rej
+*.swp
+*.tmp
+*.tmp.*
 
 # Django stuff:
 *.log
