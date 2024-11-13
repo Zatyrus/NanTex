@@ -124,6 +124,7 @@ class Oneiros(FileHandlerCore):
         )
     
     #%% Classmethods Windows
+    @override
     @classmethod
     def from_explorer(cls, **kwargs)->'Oneiros':
         ## initialize
@@ -156,6 +157,7 @@ class Oneiros(FileHandlerCore):
         return cls.from_explorer(mode = 'no_ground_truth', **kwargs)
     
     #%% Classmethods Linux
+    @override
     @classmethod
     def from_glob(cls, *args, **kwargs)->'Oneiros':
         ## initialize
@@ -748,16 +750,30 @@ class Oneiros(FileHandlerCore):
                 self.__export_npy__(outpath)
             case 'png':
                 self.__export_png__(outpath)
+            case 'single_npy':
+                self.__export_stacked_npy__(outpath)
             case _:
                 print('Error: Data type not supported yet...')
 
+    def __export_stacked_npy__(self, export_path:str)->NoReturn:
+        if self.DEBUG:
+            print('Exporting to stacked npy ...')
+        
+        for key, dream in self.data_out.items():
+            out = np.stack([dream[feature] for feature in dream.keys()], axis=0)
+            np.save(export_path + f"\\{key}.npy", out)
+            
     def __export_npy__(self, export_path:str)->NoReturn:
         if self.DEBUG:
             print('Exporting npy data...')
         
         for key, dream in self.data_out.items():
-            out = np.stack([dream[feature] for feature in dream.keys()], axis=0)
-            np.save(export_path + f"\\{key}.npy", out)
+            # create dream directory
+            pl.Path(export_path + f"\\{key}").mkdir(parents=True, exist_ok=True)
+
+            for feature_key, feature in dream.items():
+                np.save(export_path + f"\\{key}\\{feature_key}.npy", feature)
+            
         
     def __export_png__(self, export_path:str)->NoReturn:
         if self.DEBUG:
