@@ -180,7 +180,7 @@ class Oneiros(FileHandlerCore):
         # construct dream_dict
         for i, arg in enumerate(args):
             if not os.path.isfile(arg):
-                raise ValueError(f"Error: Argument {i} is not a list.")
+                raise ValueError(f"Error: Argument {i} is not a valid file.")
             data_paths_in.update({f"dream_{i}": arg})
         
         return cls(data_paths_in = data_paths_in,
@@ -386,7 +386,7 @@ class Oneiros(FileHandlerCore):
             
         if self.mode == 'has_ground_truth':
             for key, img in self.data_in.items():
-                self.data_dream[key] = img[0]
+                self.data_dream[key] = img[-1]
                 
         elif self.mode == 'no_ground_truth':
             for key, img in self.data_in.items():
@@ -521,7 +521,7 @@ class Oneiros(FileHandlerCore):
         
         if self.mode == 'has_ground_truth':
             for key, dream in self.data_out.items():
-                self.data_out[key].update({"original_overlay": self.data_in[key][0]})
+                self.data_out[key].update({"original_overlay": self.data_in[key][-1]})
         
         elif self.mode == 'no_ground_truth':
             for key, dream in self.data_out.items():
@@ -534,7 +534,7 @@ class Oneiros(FileHandlerCore):
         # fail catch
         if self.mode == 'has_ground_truth':
             for key, dream in self.data_out.items():
-                for i in range(1, self.__num_panels__()):
+                for i in range(0, self.num_features):
                     self.data_out[key].update({f"original_feature_{i}": self.data_in[key][i]})
             
     def __append_dream_overlays__(self)->NoReturn:
@@ -606,15 +606,53 @@ class Oneiros(FileHandlerCore):
             print('Changing input data...')
         self.data_paths_in = data_paths_in
     
-    def call_new_input_data(self)->NoReturn:
+    def load_new_data_windows(self)->NoReturn:
         if self.DEBUG:
             print('Calling new input data...')
+        # get data paths
+        files_tmp = pD.askFILES(query_title = "Please select the data files")
+        self.data_paths_in = {f"dream_{i}": files_tmp[i] for i in range(len(files_tmp))}
+        
+        # reset
+        self.reset_data()
+        
+        # load data
         self.__load_data__()
+        
+        # return
+        print('New data retrieved...')
+        print('Please call the dream method to process the data.')
+        
+    def load_new_data_linux(self, *args)->NoReturn:
+        if self.DEBUG:
+            print('Calling new input data...')
+        # construct dream_dict
+        for i, arg in enumerate(args):
+            if not os.path.isfile(arg):
+                raise ValueError(f"Error: Argument {i} is not a valid file.")
+            self.data_paths_in.update({f"dream_{i}": arg})
+        
+        # reset
+        self.reset_data()
+        
+        # load data
+        self.__load_data__()
+        
+        # return
+        print('New data retrieved...')
+        print('Please call the dream method to process the data.')
     
     def set_DEBUG(self, DEBUG:bool)->NoReturn:
         if self.DEBUG:
             print('Changing verbosity...')
         self.DEBUG = DEBUG
+        
+    def reset_data(self)->NoReturn:
+        if self.DEBUG:
+            print('Resetting Oneiros...')
+        self.data_in = {}
+        self.data_dream = {}
+        self.data_out = {}
     
 #%% Visualization
     def visualize(self,
@@ -663,7 +701,7 @@ class Oneiros(FileHandlerCore):
 
         # plot
         for i in range(0, self.num_features):
-            axs[0,i].imshow(self.__cast_to_img__(self.data_in[f"dream_{dream_no}"][i + 1]), cmap=cmap) # quick fix for ground truth shape
+            axs[0,i].imshow(self.__cast_to_img__(self.data_in[f"dream_{dream_no}"][i]), cmap=cmap) # quick fix for ground truth shape
             axs[0,i].set_title(f"Ground Truth {i}")
 
             
