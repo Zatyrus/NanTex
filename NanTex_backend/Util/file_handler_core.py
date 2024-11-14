@@ -37,7 +37,7 @@ class FileHandlerCore(ABC):
         ## check for datatype
         for key, path in self.data_paths_in.items():
             # path is a list of files
-            if self.__is_iterable__(path):
+            if self.__is_iterable__(path) and not isinstance(path, str):
                 self.data_in[key] = [self.__load_factory__(p)(p) for p in path]
                 continue
             # path is a single file
