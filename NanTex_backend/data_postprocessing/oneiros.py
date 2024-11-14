@@ -42,11 +42,13 @@ class Oneiros(FileHandlerCore):
     
     model:Optional[torch.nn.Module]
     num_features:int
+    num_channels_out:int
     
     def __init__(self,
                  num_features:int,
                  data_paths_in:Dict[str, List[str]],
                  data_path_out:str = None,
+                 num_channels_out:int = None,
                  mode:str = 'has_ground_truth',
                  DEBUG:bool = False
                  ) -> None:
@@ -59,6 +61,9 @@ class Oneiros(FileHandlerCore):
         
         # model variables
         self.num_features = num_features
+        if not num_channels_out:
+            num_channels_out = num_features
+        self.num_channels_out = num_channels_out
 
         # control variables
         self.DEBUG = DEBUG
@@ -313,7 +318,7 @@ class Oneiros(FileHandlerCore):
         self.__reshape_imgs__()
         
         # memorize dream shape
-        self.__memorize_dream_shape__(self.num_features)
+        self.__memorize_dream_shape__()
         
     def __post_process_data__(self)->NoReturn:
         if self.DEBUG:
@@ -436,10 +441,10 @@ class Oneiros(FileHandlerCore):
             if self.metadata[func.__name__.split('_')[2]]:
                 func()
             
-    def __memorize_dream_shape__(self, out_channels:int)->NoReturn:
+    def __memorize_dream_shape__(self)->NoReturn:
         if self.DEBUG:
             print('Memorizing dream shape...')
-        self.metadata['dream_memory_shape'] = {key : (batch.shape[0], out_channels, *self.metadata['patch_size']) for key, batch in self.data_dream.items()}
+        self.metadata['dream_memory_shape'] = {key : (batch.shape[0], self.num_channels_out, *self.metadata['patch_size']) for key, batch in self.data_dream.items()}
         
     def __memorize_patch_array_shape__(self)->NoReturn:
         if self.DEBUG:
