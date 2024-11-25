@@ -7,5 +7,5 @@
 - [ ] Add smart feature for saving data via explorer
 
 ## If need arises
-- [ ] Add convenience for Linux users
+- [x] Add convenience for Linux users
 - [ ] Add support for MacOS
