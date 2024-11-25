@@ -124,7 +124,6 @@ class Oneiros(FileHandlerCore):
         )
     
     #%% Classmethods Windows
-    @override
     @classmethod
     def from_explorer(cls, **kwargs)->'Oneiros':
         ## initialize
@@ -157,7 +156,6 @@ class Oneiros(FileHandlerCore):
         return cls.from_explorer(mode = 'no_ground_truth', **kwargs)
     
     #%% Classmethods Linux
-    @override
     @classmethod
     def from_glob(cls, *args, **kwargs)->'Oneiros':
         ## initialize
@@ -295,6 +293,9 @@ class Oneiros(FileHandlerCore):
     def __pre_process_data__(self)->NoReturn:
         if self.DEBUG:
             print('Pre-processing data...')
+            
+        # check for and apply channel padding if needed to match ground truth and number of feature channels
+        self.__pad_img_channels__()
         
         # adjust image size
         self.__adjust_img_size__()
@@ -368,6 +369,36 @@ class Oneiros(FileHandlerCore):
         subpbar.close()
     
     #%% Data processing utils
+    def __pad_img_channels__(self, img:np.ndarray)->NoReturn:
+        match (self.__check_has_ground_truth__(), self.__check_needs_channel_padding__()):
+            case (True, True):
+                if self.DEBUG:
+                    print("Mode: 'has_ground_truth'")
+                    print('Mismatch between the number of ground truth images and feature channels detected.')
+                    print("Applying zero padding to match ground truth and feature channels.")
+                    print('Continuing with padded channels...')
+                
+                # pad channels
+                for key, img in self.data_in.items():
+                    pad = np.zeros((self.num_features - (img.shape[0] - 1), # -1 for overlay
+                                    img.shape[1], 
+                                    img.shape[2])) 
+                    self.data_in[key] = np.insert(img, -1, pad, axis=0)    
+                return
+            
+            case (True, False):
+                if self.DEBUG:
+                    print("Mode: 'has_ground_truth'")
+                    print('No mismatch between the number of ground truth images and feature channels detected.')
+                    print('Continuing with provided channels...')
+                    return
+                
+            case _:
+                if self.DEBUG:
+                    print("Something went wrong...")
+                    print("Please check the data and try again.")
+                return
+    
     def __adjust_img_size__(self)->NoReturn:
         if self.DEBUG:
             print('Adjusting image size...')
@@ -869,3 +900,18 @@ class Oneiros(FileHandlerCore):
                 return False
         return True
 
+    ## Case specific checks
+    def __check_has_ground_truth__(self)->bool:
+        if self.DEBUG:
+            print('Checking ground truth...')
+        if self.mode == 'has_ground_truth':
+            return True
+        return False
+    
+    def __check_needs_channel_padding__(self)->bool:
+        if self.DEBUG:
+            print('Checking channel padding...')
+        for key, img in self.data_in.items():
+            if img.shape[1] != self.num_features:
+                return True
+        return False
