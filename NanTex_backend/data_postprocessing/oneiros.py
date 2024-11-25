@@ -299,7 +299,8 @@ class Oneiros(FileHandlerCore):
         if self.DEBUG:
             print('Pre-processing data...')
             
-        # check for and apply channel padding if needed to match ground truth and number of feature channels
+        # check for and apply channel padding if needed 
+        # to match ground truth and number of feature channels
         self.__pad_img_channels__()
         
         # adjust image size
@@ -374,7 +375,7 @@ class Oneiros(FileHandlerCore):
         subpbar.close()
     
     #%% Data processing utils
-    def __pad_img_channels__(self, img:np.ndarray)->NoReturn:
+    def __pad_img_channels__(self)->NoReturn:
         match (self.__check_has_ground_truth__(), self.__check_needs_channel_padding__()):
             case (True, True):
                 if self.DEBUG:
@@ -610,6 +611,8 @@ class Oneiros(FileHandlerCore):
         return (data - np.min(data))/(np.max(data)-np.min(data))
     
     def __cast_to_img__(self, data:np.ndarray)->np.ndarray:
+        if not np.any(data): # catch for empty arrays
+            return data.astype(self.metadata['out_type'])
         return (self.__normalize__(data) * np.iinfo(self.metadata['out_type']).max).astype(self.metadata['out_type'])
     
     def __num_panels__(self)->int:
