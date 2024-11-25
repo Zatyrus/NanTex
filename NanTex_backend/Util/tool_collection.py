@@ -8,6 +8,7 @@ import torch
 import numpy as np
 import os, sys, psutil
 from typing import Union, Dict
+from tensorboard import program
 
 ## Helper Functions
 def concat_dict(d:Dict)->np.ndarray:
@@ -46,4 +47,11 @@ def detect_gpu()->bool:
 def get_device()->torch.device:
     ## Get the device
     return torch.device("cuda" if detect_gpu() else "cpu")
+
+
+def launch_tensorboard(logdir:str):
+    tb = program.TensorBoard()
+    tb.configure(argv=[None, '--logdir', logdir])
+    url = tb.launch()
+    print(f"Tensorflow listening on {url}")
 

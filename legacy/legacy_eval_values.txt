@@ -1,0 +1,34 @@
+# legacy values
+shareloc
+{'feature_0': {'PSNR': 24.878663911827736,
+  'SSIM': 0.8020417014724761,
+  'SSIM_sewar': nan,
+  'MSSSIM': (0.9050268483301409+0j),
+  'FSIM': nan},
+ 'feature_1': {'PSNR': 29.90576903090709,
+  'SSIM': 0.8433788331546801,
+  'SSIM_sewar': nan,
+  'MSSSIM': (0.9027825679329448+0j),
+  'FSIM': nan},
+ 'feature_2': {'PSNR': 21.488831525080734,
+  'SSIM': 0.8661737149222262,
+  'SSIM_sewar': nan,
+  'MSSSIM': (0.9209380263580587+0j),
+  'FSIM': nan}}
+
+wurzburg
+{'feature_0': {'PSNR': 24.363097654067808,
+  'SSIM': 0.7483767917557018,
+  'SSIM_sewar': nan,
+  'MSSSIM': (0.8170829252280555+0j),
+  'FSIM': nan},
+ 'feature_1': {'PSNR': 25.299853723529313,
+  'SSIM': 0.8350093744129067,
+  'SSIM_sewar': nan,
+  'MSSSIM': (0.9037056335944944+0j),
+  'FSIM': nan},
+ 'feature_2': {'PSNR': 25.59881471970015,
+  'SSIM': 0.7783075885055949,
+  'SSIM_sewar': nan,
+  'MSSSIM': (0.8331714318345574+0j),
+  'FSIM': nan}}
