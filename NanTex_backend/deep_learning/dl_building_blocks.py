@@ -1,9 +1,9 @@
 ## Dependencies
-import os, sys
+import os, sys, pathlib
 import datetime, time
 import torch
 import numpy as np
-from sewar.full_ref import rmse, uqi, ergas, rase, sam, vifp
+#from sewar.full_ref import rmse, uqi, ergas, rase, sam, vifp
 
 # Typing
 from torch.utils.data import DataLoader
@@ -30,7 +30,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 ## Setup building blocks for deep learning
 
-#%% Model Step Definition
+#%% Model epoch Definition
 def model_step(model:torch.nn.Module, 
                loss_fn:Callable, 
                optimizer:Callable, 
@@ -61,6 +61,26 @@ def model_step(model:torch.nn.Module,
     
     return loss_value, predicted
 
+def prepare_routiene(log_path:str,
+                     checkpoint_path:str,
+                     *args, 
+                     **kwargs)->Tuple[str,str]:
+    
+    ## append datetime to log path and checkpoint path
+    now = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    log_path = f"{log_path}/{now}/logs"
+    checkpoint_path = f"{checkpoint_path}/{now}/checkpoints"
+    
+    # check for log directory
+    if not os.path.exists(log_path):
+        pathlib.Path(log_path).mkdir(parents = True, exist_ok = True)
+    
+    # check for checkpoint directory
+    if not os.path.exists(checkpoint_path):
+        pathlib.Path(checkpoint_path).mkdir(parents = True, exist_ok = True)
+        
+    return log_path, checkpoint_path
+
 #%% Main Training Loop
 def train(train_loader:DataLoader, 
           val_loader:DataLoader, 
@@ -68,23 +88,30 @@ def train(train_loader:DataLoader,
           loss_fn:torch.nn.Module, 
           activation:torch.nn.Module, 
           optimizer:torch.optim.Optimizer, 
-          dtype:torch.dtype, 
-          writer:SummaryWriter, 
+          dtype:torch.dtype,
           device:torch.device, 
-          training_steps:int, 
-          log_interval:int = 100,
-          save_interval:int = 500, 
-          save_dir:str = './model'
+          epochs:int, 
+          steps_per_epoch:int,
+          val_per_epoch:int,
+          save_dir:str = './model',
+          batchsize:int = 16
           )-> NoReturn:
+
+    # prepare routiene
+    log_path, checkpoint_path = prepare_routiene(log_path = save_dir,
+                                                 checkpoint_path = save_dir)
+    
+    writer:SummaryWriter
+    writer = SummaryWriter(log_dir = log_path)
 
     # set train flags, initialize step
     net.train() 
     loss_fn.train()
     
-    # initialize step and loss
-    step = 0
+    # initialize epoch and loss
+    epoch = 0
     print_loss = 0
-    optimal_loss = np.infty
+    optimal_loss = np.inf
     optimal_msssim = 0
     
     # initialize experimental metrics
@@ -96,166 +123,157 @@ def train(train_loader:DataLoader,
     
     SSIM_Metr.to(device)
     MSSSIM_Metr.to(device)
-
-    with tqdm(total = training_steps,
-              leave=False, 
-              desc='Current batch loss: 0') as pbar:
-        
-        while step < training_steps:
-            
-            # Grab a training batch
-            tmp_loader = iter(train_loader)
-            
-            ## Training
-            for feature, label in tmp_loader:
-                
-                ## MOVE TO DEVICE
-                # absolutely crucial
-                label:torch.Tensor
-                feature:torch.Tensor
-                label = label.to(device)
-                feature = feature.to(device)
-                
-                ## Progress through model
-                loss_value, pred = model_step(model = net,
-                                              loss_fn = loss_fn,
-                                              optimizer = optimizer,
-                                              feature = feature,
-                                              label = label,
-                                              activation = activation,
-                                              is_training = True)
-                
-                # Write to tensorboard
-                writer.add_scalar(tag = 'MSE', 
-                                  scalar_value = loss_value.cpu().detach().numpy(),
-                                  global_step = step)
-                writer.add_scalar(tag = 'SSIM',
-                                  scalar_value = SSIM_Metr(pred,label).cpu().detach().numpy(),
-                                  global_step = step)
-                writer.add_scalar(tag = 'MSSSIM', 
-                                  scalar_value = MSSSIM_Metr(pred,label).cpu().detach().numpy(), 
-                                  global_step = step)
-                
-                # Handle progress
-                pbar.set_description(f"Current batch loss: {loss_value.cpu().detach().numpy():.3e}") 
-                pbar.update(1)
-                
-                # Update step
-                step += 1
-                
-                # create checkpoints
-                if step % save_interval == 0:
-                    torch.save(net.state_dict(), f"{save_dir}/checkpoints/checkpoint_{step}.pt")
-                
-                ## Validation
-                if step % log_interval == 0:
-                    # Grab a validation batch
-                    tmp_val_loader = iter(val_loader)
-                    
-                    # set model to eval mode
-                    net.eval()
-
-                    # initialize accumulators
-                    acc_loss = []
-                    acc_ssim = []
-                    acc_msssim = []
-                    condition = 0
-                    
-                    for feature, label in tmp_val_loader:   
-                        pbar.set_description("Currently validating: {}".format(condition))   
-                        
-                        
-                        ## MOVE TO DEVICE
-                        # absolutely crucial
-                        label:torch.Tensor
-                        feature:torch.Tensor    
-                        feature = feature.to(device)
-                        label = label.to(device)
-
-                        
-                        # progress through model
-                        loss_value, val_pred = model_step(model=net, 
-                                                          loss_fn=loss_fn, 
-                                                          optimizer=optimizer, 
-                                                          feature=feature, 
-                                                          label=label, 
-                                                          activation=activation, 
-                                                          is_training = False)
-                        
-                        
-                        acc_loss.append(loss_value.cpu().detach().numpy())
-                        acc_ssim.append(SSIM_Metr(val_pred,label).cpu().detach().numpy())
-                        acc_msssim.append(MSSSIM_Metr(val_pred,label).cpu().detach().numpy())
-                        
-                        # if condition == 0:
-                        #     l = validate(label.cpu().detach().numpy(), val_pred.cpu().detach().numpy(), l = None)
-                        # else:
-                        #     l = validate(label.cpu().detach().numpy(), val_pred.cpu().detach().numpy(), l = l)
-                        
-                        # update condition
-                        condition += 1
-                        
-                        # if condition == 5:
-                        #     break
     
-                    # write to tensorboard
-                    writer.add_scalar(tag = "val_MSE", 
-                                      scalar_value = np.mean(acc_loss), 
-                                      global_step = step)
-                    writer.add_scalar(tag = 'val_SSIM',
-                                      scalar_value = np.mean(acc_ssim),
-                                      global_step = step)
-                    writer.add_scalar(tag = 'val_MSSSIM',
-                                      scalar_value = np.mean(acc_msssim), 
-                                      global_step = step)
-                                           
-                    # write weight checkpoints
-                    if np.mean(acc_loss) < optimal_loss:
-                        optimal_loss = np.mean(acc_loss)
-                        torch.save(net.state_dict(), f'{save_dir}/checkpoints/model_best.pt')
+    # Grab a training batch
+    tmp_loader = iter(train_loader)
+    
+    # Grab a validation batch
+    tmp_val_loader = iter(val_loader)
+    
+    with tqdm(total = epochs,
+              leave=True, 
+              desc='Current batch loss: 0',
+              position=0,
+              colour='deeppink') as pbar:
+        
+        with tqdm(total = steps_per_epoch,
+                  leave=True,
+                  desc="Processing batch...",
+                  position=1,
+                  colour='dodgerblue') as batch_pbar:
+            
+            # Global training loop
+            for epoch in range(epochs):
                         
-                    if np.mean(acc_msssim) > optimal_msssim:
-                        optimal_msssim = np.mean(acc_msssim)
-                        torch.save(net.state_dict(), f'{save_dir}/checkpoints/model_optimal_msssim.pt')
+                ## Batch loop
+                for _ in range(steps_per_epoch):
                     
-                    torch.save(net.state_dict(), f'{save_dir}/checkpoints/model_current.pt')
+                    # Grab a training batch
+                    feature, label = next(tmp_loader)
                     
-                    # Reset model to training mode
-                    net.train()
+                    ## MOVE TO DEVICE
+                    # absolutely crucial
+                    label:torch.Tensor
+                    feature:torch.Tensor
+                    label = label.to(device)
+                    feature = feature.to(device)
                     
+                    ## Progress through model
+                    loss_value, pred = model_step(model = net,
+                                                 loss_fn = loss_fn,
+                                                 optimizer = optimizer,
+                                                 feature = feature,
+                                                 label = label,
+                                                 activation = activation,
+                                                 is_training = True)
+                    
+                    # Write to tensorboard
+                    writer.add_scalar(tag = 'MSE', 
+                                      scalar_value = loss_value.cpu().detach().numpy(),
+                                      global_step = epoch)
+                    writer.add_scalar(tag = 'SSIM',
+                                      scalar_value = SSIM_Metr(pred,label).cpu().detach().numpy(),
+                                      global_step = epoch)
+                    writer.add_scalar(tag = 'MSSSIM', 
+                                      scalar_value = MSSSIM_Metr(pred,label).cpu().detach().numpy(), 
+                                      global_step = epoch)
+                    
+                    # Handle progress
+                    pbar.set_description(f"Current batch loss: {loss_value.cpu().detach().numpy():.3e}") 
+                    batch_pbar.update(1)
+                
+                # format batch_pbar
+                batch_pbar.set_description("Checkpoint reached ...")
+
+                
+                # create checkpoints #
+                torch.save(net.state_dict(), f"{checkpoint_path}/checkpoint_epoch_{epoch}.pt")
+                
+                #### Validation ####
+                # reset batch_pbar
+                batch_pbar.reset(total = val_per_epoch)
+                batch_pbar.set_description("Currently validating...")
+                batch_pbar.colour = 'orange'
+                
+                # set model to eval mode
+                net.eval()
+
+                # initialize accumulators
+                acc_loss = []
+                acc_ssim = []
+                acc_msssim = []
+
+                for _ in range(val_per_epoch):
+                    feature, label = next(tmp_val_loader)
+                
+                    ## MOVE TO DEVICE
+                    # absolutely crucial
+                    label:torch.Tensor
+                    feature:torch.Tensor    
+                    feature = feature.to(device)
+                    label = label.to(device)
+                    
+                    # progress through model
+                    loss_value, val_pred = model_step(model=net, 
+                                                    loss_fn=loss_fn, 
+                                                    optimizer=optimizer, 
+                                                    feature=feature, 
+                                                    label=label, 
+                                                    activation=activation, 
+                                                    is_training = False)
+                    
+                    
+                    acc_loss.append(loss_value.cpu().detach().numpy())
+                    acc_ssim.append(SSIM_Metr(val_pred,label).cpu().detach().numpy())
+                    acc_msssim.append(MSSSIM_Metr(val_pred,label).cpu().detach().numpy())
+                    
+                    ## ON THE FLY VALIDATION HOOK ##
+                    
+                    # update batch_pbar
+                    batch_pbar.update(1)
+                
+                # reset batch_pbar
+                batch_pbar.colour = 'green'
+                batch_pbar.set_description("Writing to tensorboard...")
+                    
+                # write to tensorboard
+                writer.add_scalar(tag = "val_MSE", 
+                                scalar_value = np.mean(acc_loss), 
+                                global_step = epoch)
+                writer.add_scalar(tag = 'val_SSIM',
+                                scalar_value = np.mean(acc_ssim),
+                                global_step = epoch)
+                writer.add_scalar(tag = 'val_MSSSIM',
+                                scalar_value = np.mean(acc_msssim), 
+                                global_step = epoch)
+                
+                # reset batch_pbar
+                batch_pbar.colour = 'green'
+                batch_pbar.set_description("Writing to checkpoints...")
+                                
+                # write weight checkpoints
+                if np.mean(acc_loss) < optimal_loss:
+                    optimal_loss = np.mean(acc_loss)
+                    torch.save(net.state_dict(), f'{checkpoint_path}/model_best.pt')
+                    
+                if np.mean(acc_msssim) > optimal_msssim:
+                    optimal_msssim = np.mean(acc_msssim)
+                    torch.save(net.state_dict(), f'{checkpoint_path}/model_optimal_msssim.pt')
+                
+                # Reset batch_pbar to training mode
+                batch_pbar.reset(total = steps_per_epoch)
+                batch_pbar.set_description("Processing batch...")
+                batch_pbar.colour = 'dodgerblue'
+                
+                # Reset model to training mode
+                net.train()
+                
+                # update progress bar
+                pbar.update(1)
+                        
     ## Save final model
-    torch.save(net.state_dict(), f'{save_dir}/model_final.pt')
+    torch.save(net.state_dict(), f'{checkpoint_path}/model_final.pt')
 
 #%% Validation
-def validate(feature:np.ndarray, 
-             pred:np.ndarray, 
-             val_dict:Dict[str,List[float]] = None)->Dict[str,List[float]]:
-    if val_dict == None:
-        val_dict = {f"feature_{i}":{key:[] for key in ['RMSE','UQI','ERGAS','RASE','SAM','VIF']} for i in range(feature.shape[1])}
-    for i in range(feature.shape[0]):
-        for j in range(feature.shape[1]):
-            for key, val in zip(val_dict.keys(),[rmse, uqi, ergas, rase, sam, vifp]):
-                val_dict[f"feature_{i}"][key].append(val(pred[i,j,...],feature[i,j,...]))
-            # l[j][0].append(rmse(pred[i,j,...],feature[i,j,...]))
-            # l[j][1].append(uqi(pred[i,j,...],feature[i,j,...]))
-            # l[j][2].append(ergas(pred[i,j,...],feature[i,j,...]))
-            # l[j][3].append(rase(pred[i,j,...],feature[i,j,...]))
-            # l[j][4].append(sam(pred[i,j,...],feature[i,j,...]))
-            # l[j][5].append(vifp(pred[i,j,...],feature[i,j,...]))
-    return val_dict
-    
-def write(val_dict, 
-          writer, 
-          step):
-    for feature, val_subdict in val_dict.items():
-        for key, val in val_subdict.items():
-            writer.add_scalar(f"{feature}_{key}", np.mean(val), global_step = step)
-    
-    
-    # for feature_count in range(len(val_dict.keys())):
-    #     writer.add_scalar(f'{desc}_FT_{k}_RMSE',np.mean(val_list[k][0]), global_step=step)
-    #     writer.add_scalar(f'{desc}_FT_{k}_UQI',np.mean(val_list[k][1]), global_step=step)
-    #     writer.add_scalar(f'{desc}_FT_{k}_ERGAS',np.mean(val_list[k][2]), global_step=step)
-    #     writer.add_scalar(f'{desc}_FT_{k}_RASE',np.mean(val_list[k][3]), global_step=step)
-    #     writer.add_scalar(f'{desc}_FT_{k}_SAM',np.mean(val_list[k][4]), global_step=step)
-    #     writer.add_scalar(f'{desc}_FT_{k}_VIF',np.mean(val_list[k][5]), global_step=step)
+def validate(Any)->Any:
+    pass

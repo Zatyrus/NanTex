@@ -389,7 +389,7 @@ class Oneiros(FileHandlerCore):
                     pad = np.zeros((self.num_features - (img.shape[0] - 1), # -1 for overlay
                                     img.shape[1], 
                                     img.shape[2])) 
-                    self.data_in[key] = np.insert(img, -1, pad, axis=0)    
+                    self.data_in[key] = np.insert(img, -1, pad, axis=0)
                 return
             
             case (True, False):
@@ -492,7 +492,7 @@ class Oneiros(FileHandlerCore):
         for key, dream in self.data_out.items():
             for feature_key, feature in dream.items():
                 # skip overlays
-                if feature_key in ['original_overlay', 'dream_overlay'] + [f"original_feature_{i}" for i in range(1, self.__num_panels__())]:
+                if feature_key in ['original_overlay', 'dream_overlay'] + [f"original_feature_{i}" for i in range(0, self.num_features)]:
                     continue
                 # apply thresholds
                 feature[feature < self.metadata['feature_static_threshodls'][feature_key]] = 0
@@ -504,7 +504,7 @@ class Oneiros(FileHandlerCore):
         for key, dream in self.data_out.items():
             for feature_key, feature in dream.items():
                 # skip overlays
-                if feature_key in ['original_overlay', 'dream_overlay'] + [f"original_feature_{i}" for i in range(1, self.__num_panels__())]:
+                if feature_key in ['original_overlay', 'dream_overlay'] + [f"original_feature_{i}" for i in range(0, self.num_features)]:
                     continue
                 
                 # apply thresholds
@@ -576,7 +576,7 @@ class Oneiros(FileHandlerCore):
             print('Appending dreams...')
         for key, dream in self.data_out.items():
             # construct dream overlay
-            out:np.ndarray = np.sum([dream[f"feature_{i}"] for i in range(self.num_features)], axis=0)
+            out:np.ndarray = np.sum([dream[f"feature_{i}"] for i in range(self.num_channels_out)], axis=0)
             out = self.__cast_to_img__(out)
             self.data_out[key].update({"dream_overlay": out})
             
@@ -616,7 +616,7 @@ class Oneiros(FileHandlerCore):
         return (self.__normalize__(data) * np.iinfo(self.metadata['out_type']).max).astype(self.metadata['out_type'])
     
     def __num_panels__(self)->int:
-        return self.num_features + 1
+        return self.num_channels_out + 1
     
     def __num_dreams__(self)->int:
         return len(self.data_in.keys())
@@ -736,11 +736,11 @@ class Oneiros(FileHandlerCore):
             self.__append_original_overlays__()
 
         # plot
-        for i in range(0, self.num_features):
-            axs[0,i].imshow(self.__cast_to_img__(self.data_in[f"dream_{dream_no}"][i]), cmap=cmap) # quick fix for ground truth shape
+        for i in range(0, self.num_features): # we iterate over all present features
+            axs[0,i].imshow(self.__cast_to_img__(self.data_in[f"dream_{dream_no}"][i]), cmap=cmap) 
             axs[0,i].set_title(f"Ground Truth {i}")
 
-            
+        for i in range(0, self.num_channels_out): # we iterate over all present predicitions
             axs[1,i].imshow(self.__cast_to_img__(self.data_out[f"dream_{dream_no}"][f"feature_{i}"]), cmap=cmap)
             axs[1,i].set_title(f"Feature Dream {i}")
                         
@@ -785,7 +785,7 @@ class Oneiros(FileHandlerCore):
             self.__append_original_overlays__()
         
         # plot
-        for i in range(0, self.num_features):
+        for i in range(0, self.num_channels_out):
             axs[i + 1].imshow(self.__cast_to_img__(self.data_out[f"dream_{dream_no}"][f"feature_{i}"]), cmap=cmap)
             axs[i + 1].set_title(f"Feature Dream {i}")
                         
