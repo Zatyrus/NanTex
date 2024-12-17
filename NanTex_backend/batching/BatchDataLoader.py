@@ -6,6 +6,7 @@ import json
 import torch
 import numpy as np
 from pprint import pprint
+from random import shuffle
 import albumentations as A
 
 from torch.utils.data import DataLoader
@@ -37,7 +38,8 @@ class DataGenerator(Dataset):
                  dtype_masks:np.dtype = np.uint8,
                  gen_type:str = 'DXSM',
                  gen_seed:int = None,
-                 is_val:bool = False
+                 is_val:bool = False,
+                 multiply_files_by:int = 100
                  )->None:
         """Data generator object used in training and validation to load, augment and distribute raw and validation data in batch.
 
@@ -62,7 +64,8 @@ class DataGenerator(Dataset):
         
         'Initialization'
         self.__dim = dim
-        self.__files = files
+        self.__files = files * multiply_files_by
+        shuffle(self.__files)
         self.__crop_size = dim[0]
         self.__chunks = chunks
         self.__in_channels = in_channels
@@ -316,7 +319,8 @@ class BatchDataLoader_Handler():
             "pin_memory":True,        # Flag to pin memory <- Leave it.
             "persistant_workers":True,# Flag to keep workers alive <- Leave it.
             "replace_raw":True,       # Flag to replace raw data <- Leave it.
-            "replace_val":False       # Flag to replace validation data <- Leave it.
+            "replace_val":False,       # Flag to replace validation data <- Leave it.
+            "multiply_files_by":100   # Multiply the number of files by a factor <- Use if you want to increase the number of files in the dataset.
             }
         
         # Dump the configuration file       
@@ -385,6 +389,7 @@ class BatchDataLoader_Handler():
                                   dtype_masks:np.dtype = np.uint8,
                                   gen_type:str = 'DXSM',
                                   gen_seed:int = None,
+                                  multiply_files_by:int = 100
                                   )->Tuple[DataLoader, DataLoader]:
         """
         Setup DataLoad objects and feed them with data. 
@@ -463,7 +468,8 @@ class BatchDataLoader_Handler():
                                           gen_seed = gen_seed,
                                           is_val = False,
                                           replace_raw=replace_raw,
-                                          replace_val=replace_val)
+                                          replace_val=replace_val,
+                                          multiply_files_by = 1)
             
             val_dataset = DataGenerator(files = val_source, 
                                         dim = val_dim, 
@@ -482,7 +488,8 @@ class BatchDataLoader_Handler():
                                         gen_seed = gen_seed,
                                         is_val = True,
                                         replace_raw=replace_raw,
-                                        replace_val=replace_val)
+                                        replace_val=replace_val,
+                                        multiply_files_by = 1)
             
             if self.DEBUG:
                 print("Autobatch Data Generators created.")
@@ -528,7 +535,8 @@ class BatchDataLoader_Handler():
                                           gen_seed = gen_seed,
                                           is_val = False,
                                           replace_raw=replace_raw,
-                                          replace_val=replace_val)
+                                          replace_val=replace_val,
+                                          multiply_files_by = multiply_files_by)
             
             val_dataset = DataGenerator(files = val_source, 
                                         dim = val_dim, 
@@ -547,7 +555,8 @@ class BatchDataLoader_Handler():
                                         gen_seed = gen_seed,
                                         is_val = True,
                                         replace_raw=replace_raw,
-                                        replace_val=replace_val)
+                                        replace_val=replace_val,
+                                        multiply_files_by = multiply_files_by)
             
             if self.DEBUG:
                 print("Non-Autobatched Data Generators created.")

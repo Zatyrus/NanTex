@@ -11,7 +11,7 @@ from tqdm.notebook import tqdm
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from skimage.io import imread
-from NanTex_backend.seg_eval.Evaluate import eval_image
+from NanTex_backend.evaluation.Evaluate import eval_image
 
 def askDIR():
     root = tk.Tk()
