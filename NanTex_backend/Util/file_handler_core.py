@@ -1,6 +1,5 @@
 ## Dependencies
 import os
-import warnings
 import pathlib as pl
 import numpy as np
 from skimage import io

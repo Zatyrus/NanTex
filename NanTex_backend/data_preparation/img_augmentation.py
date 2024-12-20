@@ -37,4 +37,6 @@ val_augmentation_pipeline:A.Compose = A.Compose(val_transform_schedule)
 test_augmentation_pipeline:A.Compose = A.Compose(test_transform_schedule)
 
 ## Namespace
-__all__ = ["train_augmentation_pipeline", "val_augmentation_pipeline", "test_augmentation_pipeline"]
+__all__ = ["train_augmentation_pipeline", 
+           "val_augmentation_pipeline", 
+           "test_augmentation_pipeline"]
