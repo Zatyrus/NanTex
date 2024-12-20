@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "nantex"
+version = "0.1.0"
+description = "Nanotextural multiplexing of super-resolution microscopy data."
+authors = ["Bela Vogler <bela.vogler@uni-jena.de>"]
+license = "BSD-4-Clause"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
