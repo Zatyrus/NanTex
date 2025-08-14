@@ -100,7 +100,7 @@ class Oneiros(FileHandlerCore):
             print('Setting up metadata...')
         self.metadata.update(
             {
-                "feature_static_threshodls" : {
+                "feature_static_thresholds" : {
                     "feature_0": 0.1,
                     "feature_1": 0.1,
                     "feature_2": 0.1
@@ -495,7 +495,7 @@ class Oneiros(FileHandlerCore):
                 if feature_key in ['original_overlay', 'dream_overlay'] + [f"original_feature_{i}" for i in range(0, self.num_features)]:
                     continue
                 # apply thresholds
-                feature[feature < self.metadata['feature_static_threshodls'][feature_key]] = 0
+                feature[feature < self.metadata['feature_static_thresholds'][feature_key]] = 0
                 
     def __apply_dynamic_thresholds__(self)->NoReturn:
         if self.DEBUG:
