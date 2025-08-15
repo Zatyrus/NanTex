@@ -495,7 +495,7 @@ class Oneiros(FileHandlerCore):
             print("Reshaping images...")
         for key, patches in self.data_dream.items():
             self.data_dream[key] = np.reshape(
-                a=patches,
+                patches,
                 newshape=(
                     self.metadata["patch_array_shape"][key][0]
                     * self.metadata["patch_array_shape"][key][1],
