@@ -66,7 +66,7 @@ def model_step(
     return loss_value, predicted
 
 
-def prepare_routiene(
+def prepare_routine(
     log_path: str, checkpoint_path: str, *args, **kwargs
 ) -> Tuple[str, str]:
     ## append datetime to log path and checkpoint path
@@ -101,8 +101,8 @@ def train(
     save_dir: str = "./model",
     batchsize: int = 16,
 ) -> NoReturn:
-    # prepare routiene
-    log_path, checkpoint_path = prepare_routiene(
+    # prepare routine
+    log_path, checkpoint_path = prepare_routine(
         log_path=save_dir, checkpoint_path=save_dir
     )
 
