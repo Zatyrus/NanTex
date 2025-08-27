@@ -268,24 +268,35 @@ class OverlayGenerator(FileHandlerCore):
 
     def __generate_punchcard_overlay__(self) -> NoReturn:
         for punchcard in self.__generate_stencil__():
+            # add file reference to punchcard
             self.data_punchcards[
                 f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
             ] = {
                 list(self.data_in.keys())[i]: punchcard[i]
                 for i in range(len(self.data_in.keys()))
             }
+            # add dtype to punchcard
+            self.data_punchcards[
+                f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
+            ].update({"dtype": self.metadata["dtype"]})
 
     def __generate_punchcard_overlay_rotation__(self) -> NoReturn:
         for punchcard in self.__generate_stencil_rotation__():
+            # add file reference to punchcard
             self.data_punchcards[
                 f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
             ] = {
                 list(self.data_in.keys())[i]: punchcard[i]
                 for i in range(len(self.data_in.keys()))
             }
+            # add rotation to punchcard
             self.data_punchcards[
                 f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
             ].update({"rotation": punchcard[len(self.data_in.keys()) :]})
+            # add dtype to punchcard
+            self.data_punchcards[
+                f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
+            ].update({"dtype": self.metadata["dtype"]})
 
     # %% Single Core Execution
     def __single_core_main__(self, stack_generation: Callable, desc: str) -> NoReturn:
@@ -427,24 +438,42 @@ class OverlayGenerator(FileHandlerCore):
         self, img: np.ndarray, y_lim: int, x_lim: int, patchsize: Tuple[int, int] = None
     ) -> np.ndarray:
         # determine padding
-        y_pad = max(0, int((y_lim - img.shape[0]) / 2))
-        x_pad = max(0, int((x_lim - img.shape[1]) / 2))
+        y_pad = max(0, int(np.round((y_lim - img.shape[0]) / 2)))
+        x_pad = max(0, int(np.round((x_lim - img.shape[1]) / 2)))
 
         # setup zero array
-        out = np.zeros(shape=(y_lim, x_lim))
+        out = np.zeros(shape=(y_lim, x_lim), dtype=img.dtype)  # <- we retain the dtype
         # insert image
         out[y_pad : img.shape[0] + y_pad, x_pad : img.shape[1] + x_pad] = img
 
         # crop to limit
         if patchsize:
-            out = out[
-                int((y_lim - patchsize[0]) // 2) : -(
-                    int((y_lim - patchsize[0]) // 2) + 1
-                ),
-                int((x_lim - patchsize[1]) // 2) : -(
-                    int((x_lim - patchsize[1]) // 2) + 1
-                ),
-            ]
+            # calculate cropping coordinates
+            y_start = int(np.floor((y_lim - patchsize[0]) / 2))
+            y_end = -(int(np.floor((y_lim - patchsize[0]) / 2)) + 1)
+            x_start = int(np.floor((x_lim - patchsize[1]) / 2))
+            x_end = -(int(np.floor((x_lim - patchsize[1]) / 2)) + 1)
+
+            # catch rounding issues
+            # rounding to the 0th decimal may introduce offsets by up to 1 pixel per limit
+            if np.abs(y_lim - y_start + y_end - patchsize[0]) == 1:
+                y_end += 1  # hence, we adjust the end coordinate
+            elif np.abs(y_lim - y_start + y_end - patchsize[0]) == 2:
+                y_start -= 1  # hence, we adjust the start coordinate
+                y_end += 1  # and the end coordinate
+            if np.abs(x_lim - x_start + x_end - patchsize[1]) == 1:
+                x_end += 1
+            elif np.abs(x_lim - x_start + x_end - patchsize[1]) == 2:
+                x_start -= 1
+                x_end += 1
+            # in case the cropping coordinates are off by more than 2 pixels, somethings bad has happened and we raise an exception.
+            if (
+                np.abs(y_lim - y_start + y_end - patchsize[0]) > 2
+                or np.abs(x_lim - x_start + x_end - patchsize[1]) > 2
+            ):
+                raise ValueError("Cropping coordinates are off by more than 2 pixels.")
+
+            out = out[y_start:y_end, x_start:x_end]
             return out
         # return padded image
         return out
