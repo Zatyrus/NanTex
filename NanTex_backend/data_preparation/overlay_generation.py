@@ -7,7 +7,7 @@ import warnings
 import itertools
 import webbrowser
 import numpy as np
-from typing import List, Tuple, Union, Dict, Any, Optional, NoReturn, Callable
+from typing import List, Tuple, Union, Dict, Any, Optional, NoReturn, Callable, Type
 
 # for progress bar
 # detect jupyter notebook
@@ -30,6 +30,10 @@ from ..Util.file_handler_core import FileHandlerCore
 class OVERLAY_HELPER:
     # %% Overlay Generation
     @staticmethod
+    def __cast_output_to_dtype__(arr: np.ndarray, dtype: Type[np.number]) -> np.ndarray:
+        return arr.astype(dtype)
+
+    @staticmethod
     def __overlay__(img_list: List[np.ndarray]) -> np.ndarray:
         return np.sum(img_list, axis=0)
 
@@ -39,10 +43,18 @@ class OVERLAY_HELPER:
     ) -> NoReturn:
         # collect imgs
         out: List
-        out = [data_in[key][value] for key, value in punchcard.items()]
+        out = [
+            data_in[key][value]
+            for key, value in punchcard.items()
+            if key not in ["dtype"]
+        ]
 
         # overlay imgs
-        out.append(OVERLAY_HELPER.__overlay__(out))
+        out.append(
+            OVERLAY_HELPER.__cast_output_to_dtype__(
+                OVERLAY_HELPER.__overlay__(out), punchcard["dtype"]
+            )
+        )
         return np.stack(out, axis=0)
 
     @staticmethod
@@ -52,14 +64,20 @@ class OVERLAY_HELPER:
         # collect imgs
         out: List
         out = [
-            data_in[key][value] for key, value in punchcard.items() if key != "rotation"
+            data_in[key][value]
+            for key, value in punchcard.items()
+            if key not in ["rotation", "dtype"]
         ]
 
         # rotate imgs
         out = [np.rot90(img, k=punchcard["rotation"][i]) for i, img in enumerate(out)]
 
         # overlay imgs
-        out.append(OVERLAY_HELPER.__overlay__(out))
+        out.append(
+            OVERLAY_HELPER.__cast_output_to_dtype__(
+                OVERLAY_HELPER.__overlay__(out), punchcard["dtype"]
+            )
+        )
         return np.stack(out, axis=0)
 
     @staticmethod
@@ -434,7 +452,9 @@ class OverlayGenerator(FileHandlerCore):
     def __normalize_img__(
         self, img: np.ndarray, max_val: Union[float, int] = 255
     ) -> np.ndarray:
-        return (img - np.min(img)) / (np.max(img) - np.min(img)) * max_val
+        return ((img - np.min(img)) / (np.max(img) - np.min(img)) * max_val).astype(
+            self.metadata["dtype"]
+        )  # <- we cast to the expected/wanted dtype
 
     def get_x_lim(self) -> int:
         return max([img.shape[1] for img in sum(list(self.data_in.values()), [])])
@@ -569,5 +589,6 @@ class OverlayGenerator(FileHandlerCore):
         self.metadata = {
             "x_lim": self.get_x_lim(),
             "y_lim": self.get_y_lim(),
+            "dtype": np.uint16,
             "sleeptime": 0.0,
         }
