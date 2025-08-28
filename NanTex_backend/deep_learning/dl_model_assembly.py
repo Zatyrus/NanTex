@@ -13,18 +13,18 @@ from torch.utils.tensorboard import SummaryWriter
 
 ## Hyperparameters
 hyperparameters: Dict[str, Any] = {
-    "batch_size": 16,
-    "epochs": 32,
+    "batch_size": 32,
+    "epochs": 64,
     "learning_rate": 5e-4,
-    "weight_decay": 0,
-    "steps_per_epoch": 64,
+    "weight_decay": 0.0,
+    "steps_per_epoch": 32,
     "val_per_epoch": 32,
 }
 
 ## Nework parameters
 Unet_config: Dict[str, Any] = {
     "in_channels": 1,
-    "num_fmaps": 16,
+    "num_fmaps": 32,
     "fmap_inc_factors": 3,
     "downsample_factors": [[2, 2], [2, 2], [2, 2], [2, 2]],
     "kernel_size_down": None,  # None means 3x3
@@ -36,9 +36,9 @@ Unet_config: Dict[str, Any] = {
 }
 
 final_layer_config: Dict[str, Any] = {
-    "in_channels": 16,
-    "out_channels": 2,
-    "kernel_size": 1,
+    "in_channels": 32,
+    "out_channels": 3,
+    "kernel_size": 1,  # Kernel size for the final convolution
     "padding": "same",
 }
 
