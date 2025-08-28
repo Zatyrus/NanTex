@@ -6,6 +6,19 @@ from skimage import io
 from abc import ABC, abstractmethod
 from typing import Dict, List, NoReturn, Callable
 
+# for progress bar
+# detect jupyter notebook
+from IPython import get_ipython
+
+try:
+    ipy_str = str(type(get_ipython()))
+    if "zmqshell" in ipy_str:
+        from tqdm.notebook import tqdm
+    else:
+        from tqdm import tqdm
+except:
+    from tqdm import tqdm
+
 ## Custom Dependencies
 from ..Util.pyDialogue import pyDialogue as pD
 
@@ -34,7 +47,11 @@ class FileHandlerCore(ABC):
             print("Loading data...")
 
         ## check for datatype
-        for key, path in self.data_paths_in.items():
+        for key, path in tqdm(
+            self.data_paths_in.items(),
+            desc="Loading data...",
+            total=len(self.data_paths_in),
+        ):
             # path is a list of files
             if self.__is_iterable__(path) and not isinstance(path, str):
                 self.data_in[key] = [self.__load_factory__(p)(p) for p in path]
