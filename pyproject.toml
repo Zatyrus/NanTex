@@ -12,10 +12,12 @@ numpy = "^2.2.0"
 matplotlib = "^3.10.0"
 tqdm = "^4.67.1"
 scikit-image = "^0.25.0"
-albumentations = "^1.4.23"
 jupyter = "^1.1.1"
 ipykernel = "^6.29.5"
 ray = {extras = ["default"], version = "^2.40.0"}
+ezray = "^1.1.4"
+pytorch-msssim = "^1.0.0"
+albumentations = "^2.0.8"
 
 
 [build-system]
