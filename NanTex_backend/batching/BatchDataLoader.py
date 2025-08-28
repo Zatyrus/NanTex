@@ -37,11 +37,13 @@ class DataGenerator(Dataset):
         load_per_sample: int = 8,
         dtype_in: np.dtype = np.uint16,
         dtype_out: np.dtype = np.float32,
-        dtype_masks: np.dtype = np.uint8,
+        dtype_masks_in: np.dtype = np.uint8,
+        dtype_masks_out: np.dtype = np.float32,
         gen_type: str = "DXSM",
         gen_seed: int = None,
         is_val: bool = False,
-        multiply_files_by: int = 100,
+        multiply_files_by: int = 1,
+        uses_11_normalization: bool = False,
     ) -> None:
         """Data generator object used in training and validation to load, augment and distribute raw and validation data in batch.
 
@@ -58,7 +60,8 @@ class DataGenerator(Dataset):
             load_per_sample (int, optional): Number of datasets to load per batch. Number of patches taken from the same dataset. Defaults to 8.
             dtype_in (np.dtype, optional): Data type of the input data. Defaults to np.uint16.
             dtype_out (np.dtype, optional): Data type of the output data. Defaults to np.float32.
-            dtype_masks (np.dtype, optional): Data type of the masks. Defaults to np.uint8.
+            dtype_masks_in (np.dtype, optional): Data type of the masks. Defaults to np.uint8.
+            dtype_masks_out (np.dtype, optional): Data type of the masks. Defaults to np.float32.
             gen_type (str, optional): Type of random number generator. Defaults to 'DXSM'.
             gen_seed (int, optional): Seed for the random number generator. Defaults to None.
             is_val (bool, optional): Flag if the object is used for generating validation data. Defaults to False.
@@ -79,10 +82,12 @@ class DataGenerator(Dataset):
         self.__Load_per_Sample = load_per_sample
         self.__dtype_in = dtype_in
         self.__dtype_out = dtype_out
-        self.__dtype_masks = dtype_masks
+        self.__dtype_masks_in = dtype_masks_in
+        self.__dtype_masks_out = dtype_masks_out
         self.__is_val = is_val
         self.__replace_raw = replace_raw
         self.__replace_val = replace_val
+        self.__uses_11_normalization = uses_11_normalization
 
         ## Check for padding if no augmentation pipeline is submitted
         if not aug_line:
@@ -113,39 +118,33 @@ class DataGenerator(Dataset):
         Returns:
             np.ndarray: X - samples, y - ground truth
         """
+
         if self.__BatchSize > 1:
-            # setup the batch
-            X = np.empty(
-                (self.__BatchSize, self.__in_channels, *self.__dim),
-                dtype=self.__dtype_out,
-            )
-            y = np.empty(
-                (self.__BatchSize, self.__out_channels, *self.__dim),
-                dtype=self.__dtype_out,
-            )
+            # initialize batch
+            X, y = self.__initialize_batch__()
 
-            if self.__is_val:
-                tmp_list = self.__gen.choice(
-                    a=self.__files,
-                    size=int(self.__BatchSize // self.__Load_per_Sample),
-                    replace=self.__replace_val,
-                )
-            else:
-                tmp_list = self.__gen.choice(
-                    a=self.__files,
-                    size=int(self.__BatchSize // self.__Load_per_Sample),
-                    replace=self.__replace_raw,
-                )
+            files = {
+                path: np.load(path).astype(self.__dtype_in)
+                for path in self.__pick_file_paths__()
+            }
+            files = {
+                path: [
+                    self.__data_generation__(tmp=files[path])
+                    for _ in range(self.__Load_per_Sample)
+                ]
+                for path in files.keys()
+            }
 
-            for i, in_file in enumerate(tmp_list):
+            # assemble batch
+            for i, data in enumerate(files.values()):
                 for j in range(self.__Load_per_Sample):
                     (
                         X[i * self.__Load_per_Sample + j, ...],
                         y[i * self.__Load_per_Sample + j, ...],
-                    ) = self.__data_generation__(file=in_file)
+                    ) = data[j]
 
         elif self.__BatchSize == 1:
-            X, y = self.__data_generation__(file=self.__files[index])
+            X, y = self.__data_generation__(tmp=np.load(self.__files[index]))
 
         else:
             raise ValueError("BatchSize must be greater than 0.")
@@ -179,26 +178,48 @@ class DataGenerator(Dataset):
             dict: Augmented images and masks
         """
         tmp = self.__transform(
-            image=np.squeeze(image).astype(self.__dtype_in),
-            masks=list(masks.astype(self.__dtype_in)),
+            image=np.squeeze(image).astype(self.__dtype_out),
+            masks=list(masks.astype(self.__dtype_masks_out)),
         )
 
         return tmp["image"], tmp["masks"]
 
-    def __data_generation__(self, file: str) -> Tuple[np.ndarray, np.ndarray]:
+    def __initialize_batch__(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        # setup the batch
+        X = torch.from_numpy(
+            np.empty(
+                (self.__BatchSize, self.__in_channels, *self.__dim),
+                dtype=self.__dtype_out,
+            )
+        )
+        y = torch.from_numpy(
+            np.empty(
+                (self.__BatchSize, self.__out_channels, *self.__dim),
+                dtype=self.__dtype_masks_out,
+            )
+        )
+        return X, y
+
+    def __pick_file_paths__(self) -> List[str]:
+        if self.__is_val:
+            return self.__gen.choice(
+                a=self.__files,
+                size=int(self.__BatchSize // self.__Load_per_Sample),
+                replace=self.__replace_val,
+            )
+        return self.__gen.choice(
+            a=self.__files,
+            size=int(self.__BatchSize // self.__Load_per_Sample),
+            replace=self.__replace_raw,
+        )
+
+    def __data_generation__(self, tmp: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Generates data containing # batch_size augmented samples and likewise augmented ground truth.
 
         Returns:
             np.ndarray: X - augmentd sample stack,
             y - augmented ground truth stack
         """
-
-        # Initialization
-        X = np.empty((self.__in_channels, *self.__dim), dtype=self.__dtype_out)
-        y = np.empty((self.__out_channels, *self.__dim), dtype=self.__dtype_out)
-
-        tmp = np.load(file=file).astype(self.__dtype_in)
-
         # No Augmentation
         if self.__transform == None:
             self.__transform = A.Compose(
@@ -213,46 +234,91 @@ class DataGenerator(Dataset):
                 ]
             )
 
-        img, masks = self.__data_augmentation__(
-            image=tmp[self.__out_channels :], masks=tmp[: self.__out_channels]
-        )
+        # Extract Img and Masks
+        img = tmp[self.__out_channels :]
+        masks = tmp[: self.__out_channels]
 
         # Store sample
+        img = self.__normalize__(
+            arr=img,
+            min_val=np.iinfo(self.__dtype_masks_in).min * self.__out_channels,
+            max_val=np.iinfo(self.__dtype_masks_in).max * self.__out_channels,
+            precision=np.finfo(self.__dtype_out).precision,
+        ).astype(self.__dtype_out)
+
+        masks = self.__normalize__(
+            arr=masks,
+            min_val=np.iinfo(self.__dtype_masks_in).min,
+            max_val=np.iinfo(self.__dtype_masks_in).max,
+            precision=np.finfo(self.__dtype_masks_out).precision,
+        ).astype(self.__dtype_masks_out)
+
+        # apply data augmentation
+        img, masks = self.__data_augmentation__(image=img, masks=masks)
+
         if self.__normalize:
-            img = torch.from_numpy(img.astype(self.__dtype_out))
-            img = (
-                img / (255 * self.__out_channels)
-            )  ## normalize if all superimposed imags have the same intensity distribution
-            X = torch.nan_to_num(img)
+            X = torch.from_numpy(img.astype(self.__dtype_out))
 
         elif self.__standardize:
-            img = torch.from_numpy(img.astype(self.__dtype_out))
-            img = (img - img.mean()) / img.std()
-            X = torch.nan_to_num(img)
+            img = img - np.mean(img)
+            img = img / np.std(img)
+            X = torch.from_numpy(img.astype(self.__dtype_out))
 
         elif not self.__normalize and not self.__standardize:
             X = img
 
         if self.__in_channels == 1:
-            X = X[None, ...]
+            X = X[torch.newaxis, ...]
 
         # Store class
         masks = np.stack(masks, axis=0)
-        if self.__normalize or self.__standardize:
-            y = torch.from_numpy(masks.astype(self.__dtype_masks))
-            y = y / 255
-
-        elif not self.__normalize and not self.__standardize:
-            y = torch.from_numpy(masks.astype(self.__dtype_masks))
+        y = torch.from_numpy(masks.astype(self.__dtype_masks_out))
 
         if self.__out_channels == 1:
-            y = y[None, ...]
+            y = y[torch.newaxis, ...]
 
         return X, y
 
     # %% Dunder Dethods
     def get_dict(self) -> Dict:
         return self.__dict__
+
+    # %% Helper
+    def __normalize__(
+        self, arr: np.ndarray, min_val: float, max_val: float, precision: int = 6
+    ) -> np.ndarray:
+        if self.__uses_11_normalization:
+            return self.normalize_tensor_11(arr, min_val, max_val)
+        return self.normalize_tensor_01(arr, min_val, max_val, precision)
+
+    def __denormalize__(
+        self, arr: np.ndarray, min_val: float, max_val: float
+    ) -> np.ndarray:
+        if self.__uses_11_normalization:
+            return self.denormalize_tensor_11(arr, min_val, max_val)
+        return self.denormalize_tensor_01(arr, min_val, max_val)
+
+    def normalize_tensor_01(
+        self, arr: np.ndarray, min_val: float, max_val: float, precision: int
+    ) -> torch.Tensor:
+        return (arr - min_val) / (
+            max_val - min_val + (10 ** -int(precision + 2))
+        )  # add small value to avoid negative values and division by zero
+
+    def denormalize_tensor_01(
+        self, arr: np.ndarray, min_val: float, max_val: float
+    ) -> torch.Tensor:
+        return arr * (max_val - min_val) + min_val
+
+    def normalize_tensor_11(
+        self, arr: np.ndarray, min_val: float, max_val: float
+    ) -> torch.Tensor:
+        return (arr - min_val) / (max_val - min_val) * 2 - 1
+
+    def denormalize_tensor_11(
+        self, arr: np.ndarray, min_val: float, max_val: float
+    ) -> torch.Tensor:
+        return (arr + 1) / 2 * (max_val - min_val) + min_val
 
 
 # %% Covnenience Class
@@ -343,7 +409,8 @@ class BatchDataLoader_Handler:
             "out_channels": 3,  # Number of output channels <- Number of structures to segment.
             "dtype_in": "uint16",  # Data type of the input data <- Leave it.
             "dtype_out": "float32",  # Data type of the output data <- Leave it.
-            "dtype_masks": "uint8",  # Data type of the masks <- Leave it.
+            "dtype_masks_in": "uint8",  # Data type of the masks <- Leave it.
+            "dtype_masks_out": "float32",  # Data type of the masks <- Leave it.
             "gen_type": "DXSM",  # Type of random number generator <- Leave it, if you don't know what you are doing.
             "gen_seed": None,  # Seed for the random number generator <- Use for reproducibility.
             "pin_memory": True,  # Flag to pin memory <- Leave it.
@@ -351,6 +418,7 @@ class BatchDataLoader_Handler:
             "replace_raw": True,  # Flag to replace raw data <- Leave it.
             "replace_val": False,  # Flag to replace validation data <- Leave it.
             "multiply_files_by": 100,  # Multiply the number of files by a factor <- Use if you want to increase the number of files in the dataset.
+            "uses_11_normalization": False,  # Flag to use 11 normalization <- Leave it.
         }
 
         # Dump the configuration file
@@ -416,10 +484,12 @@ class BatchDataLoader_Handler:
         autobatch: bool = True,
         dtype_in: np.dtype = np.uint16,
         dtype_out: np.dtype = np.float32,
-        dtype_masks: np.dtype = np.uint8,
+        dtype_masks_in: np.dtype = np.uint8,
+        dtype_masks_out: np.dtype = np.float32,
         gen_type: str = "DXSM",
         gen_seed: int = None,
         multiply_files_by: int = 100,
+        uses_11_normalization: bool = False,
     ) -> Tuple[DataLoader, DataLoader]:
         """
         Setup DataLoad objects and feed them with data.
@@ -496,13 +566,15 @@ class BatchDataLoader_Handler:
                 load_per_sample=load_per_sample,
                 dtype_in=dtype_in,
                 dtype_out=dtype_out,
-                dtype_masks=dtype_masks,
+                dtype_masks_in=dtype_masks_in,
+                dtype_masks_out=dtype_masks_out,
                 gen_type=gen_type,
                 gen_seed=gen_seed,
                 is_val=False,
                 replace_raw=replace_raw,
                 replace_val=replace_val,
                 multiply_files_by=1,
+                uses_11_normalization=uses_11_normalization,
             )
 
             val_dataset = DataGenerator(
@@ -518,13 +590,15 @@ class BatchDataLoader_Handler:
                 load_per_sample=load_per_sample,
                 dtype_in=dtype_in,
                 dtype_out=dtype_out,
-                dtype_masks=dtype_masks,
+                dtype_masks_in=dtype_masks_in,
+                dtype_masks_out=dtype_masks_out,
                 gen_type=gen_type,
                 gen_seed=gen_seed,
                 is_val=True,
                 replace_raw=replace_raw,
                 replace_val=replace_val,
                 multiply_files_by=1,
+                uses_11_normalization=uses_11_normalization,
             )
 
             if self.DEBUG:
@@ -570,13 +644,15 @@ class BatchDataLoader_Handler:
                 load_per_sample=load_per_sample,
                 dtype_in=dtype_in,
                 dtype_out=dtype_out,
-                dtype_masks=dtype_masks,
+                dtype_masks_in=dtype_masks_in,
+                dtype_masks_out=dtype_masks_out,
                 gen_type=gen_type,
                 gen_seed=gen_seed,
                 is_val=False,
                 replace_raw=replace_raw,
                 replace_val=replace_val,
                 multiply_files_by=multiply_files_by,
+                uses_11_normalization=uses_11_normalization,
             )
 
             val_dataset = DataGenerator(
@@ -592,13 +668,15 @@ class BatchDataLoader_Handler:
                 load_per_sample=load_per_sample,
                 dtype_in=dtype_in,
                 dtype_out=dtype_out,
-                dtype_masks=dtype_masks,
+                dtype_masks_in=dtype_masks_in,
+                dtype_masks_out=dtype_masks_out,
                 gen_type=gen_type,
                 gen_seed=gen_seed,
                 is_val=True,
                 replace_raw=replace_raw,
                 replace_val=replace_val,
                 multiply_files_by=multiply_files_by,
+                uses_11_normalization=uses_11_normalization,
             )
 
             if self.DEBUG:
