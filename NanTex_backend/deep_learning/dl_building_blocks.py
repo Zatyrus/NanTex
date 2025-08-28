@@ -24,10 +24,14 @@ except:
     from tqdm import tqdm
 
 ## Custom dependencies
-from NanTex_backend.deep_learning.train_loss_experimental.ms_ssim_loss import (
-    SSIM,
-    MSSSIM,
-)
+# from NanTex_backend.deep_learning.train_loss_experimental.ms_ssim_loss import (
+#     SSIM,
+#     MSSSIM,
+# )
+
+## Additional Metrices
+from pytorch_msssim import SSIM, MS_SSIM
+from torch.nn import MSELoss
 
 
 from torch.utils.tensorboard import SummaryWriter
@@ -85,6 +89,30 @@ def prepare_routine(
     return log_path, checkpoint_path
 
 
+def normalize_tensor_01(
+    tensor: torch.Tensor, min_val: float, max_val: float
+) -> torch.Tensor:
+    return (tensor - min_val) / (
+        max_val - min_val + 1e-12
+    )  # add 1e-12 to avoid negative values and division by zero
+
+
+def denormalize_tensor_01(tensor: torch.Tensor, data_range: float) -> torch.Tensor:
+    return tensor * data_range
+
+
+def normalize_tensor_11(
+    tensor: torch.Tensor, min_val: float, max_val: float
+) -> torch.Tensor:
+    return (tensor - min_val) / (max_val - min_val) * 2 - 1
+
+
+def denormalize_tensor_11(
+    tensor: torch.Tensor, min_val: float, max_val: float
+) -> torch.Tensor:
+    return (tensor + 1) / 2 * (max_val - min_val) + min_val
+
+
 # %% Main Training Loop
 def train(
     train_loader: DataLoader,
@@ -93,13 +121,15 @@ def train(
     loss_fn: torch.nn.Module,
     activation: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    dtype: torch.dtype,
     device: torch.device,
     epochs: int,
     steps_per_epoch: int,
     val_per_epoch: int,
     save_dir: str = "./model",
-    batchsize: int = 16,
+    num_channels: int = 3,
+    data_range: float = 1.0,
+    write_val_per_feature: bool = False,
+    uses_11_normalization: bool = False,
 ) -> NoReturn:
     # prepare routine
     log_path, checkpoint_path = prepare_routine(
@@ -115,19 +145,42 @@ def train(
 
     # initialize epoch and loss
     epoch = 0
-    print_loss = 0
+    epoch_step_counter: int = 0
     optimal_loss = np.inf
     optimal_msssim = 0
+    if write_val_per_feature:
+        optimal_feature_loss = {i: np.inf for i in range(num_channels)}
+        optimal_feature_msssim = {i: 0 for i in range(num_channels)}
 
     # initialize experimental metrics
+    MSE_val_Metr: MSELoss
     SSIM_Metr: SSIM
-    MSSSIM_Metr: MSSSIM
+    MSSSIM_Metr: MS_SSIM
 
-    SSIM_Metr = SSIM()
-    MSSSIM_Metr = MSSSIM()
+    SSIM_Metr = SSIM(
+        data_range=data_range,
+        size_average=True,
+        channel=num_channels,
+        nonnegative_ssim=True,
+    )
+    MSSSIM_Metr = MS_SSIM(
+        data_range=data_range, size_average=True, channel=num_channels
+    )
 
+    if write_val_per_feature:
+        MSE_val_Metr = MSELoss()
+        SSIM_val_Metr = SSIM(
+            data_range=data_range, size_average=True, channel=1, nonnegative_ssim=True
+        )
+        MSSSIM_val_Metr = MS_SSIM(data_range=data_range, size_average=True, channel=1)
+
+    # send to device
     SSIM_Metr.to(device)
     MSSSIM_Metr.to(device)
+    if write_val_per_feature:
+        MSE_val_Metr.to(device)
+        SSIM_val_Metr.to(device)
+        MSSSIM_val_Metr.to(device)
 
     # Grab a training batch
     tmp_loader = iter(train_loader)
@@ -174,28 +227,36 @@ def train(
                         is_training=True,
                     )
 
+                    # denormalize if needed
+                    if uses_11_normalization:
+                        label = denormalize_tensor_11(label, 0.0, data_range)
+                        pred = denormalize_tensor_11(pred, 0.0, data_range)
+
                     # Write to tensorboard
                     writer.add_scalar(
                         tag="MSE",
                         scalar_value=loss_value.cpu().detach().numpy(),
-                        global_step=epoch,
+                        global_step=epoch_step_counter,
                     )
                     writer.add_scalar(
                         tag="SSIM",
                         scalar_value=SSIM_Metr(pred, label).cpu().detach().numpy(),
-                        global_step=epoch,
+                        global_step=epoch_step_counter,
                     )
                     writer.add_scalar(
                         tag="MSSSIM",
                         scalar_value=MSSSIM_Metr(pred, label).cpu().detach().numpy(),
-                        global_step=epoch,
+                        global_step=epoch_step_counter,
                     )
 
                     # Handle progress
                     pbar.set_description(
                         f"Current batch loss: {loss_value.cpu().detach().numpy():.3e}"
                     )
+                    # update batch progress
                     batch_pbar.update(1)
+                    # write epoch step counter
+                    epoch_step_counter += 1
 
                 # format batch_pbar
                 batch_pbar.set_description("Checkpoint reached ...")
@@ -214,59 +275,166 @@ def train(
                 # set model to eval mode
                 net.eval()
 
-                # initialize accumulators
-                acc_loss = []
-                acc_ssim = []
-                acc_msssim = []
+                # per default, we write validation metrices as averages
+                if not write_val_per_feature:
+                    # initialize accumulators
+                    acc_loss = []
+                    acc_ssim = []
+                    acc_msssim = []
 
-                for _ in range(val_per_epoch):
-                    feature, label = next(tmp_val_loader)
+                    for _ in range(val_per_epoch):
+                        feature, label = next(tmp_val_loader)
 
-                    ## MOVE TO DEVICE
-                    # absolutely crucial
-                    label: torch.Tensor
-                    feature: torch.Tensor
-                    feature = feature.to(device)
-                    label = label.to(device)
+                        ## MOVE TO DEVICE
+                        label: torch.Tensor
+                        feature: torch.Tensor
+                        feature = feature.to(device)
+                        label = label.to(device)
 
-                    # progress through model
-                    loss_value, val_pred = model_step(
-                        model=net,
-                        loss_fn=loss_fn,
-                        optimizer=optimizer,
-                        feature=feature,
-                        label=label,
-                        activation=activation,
-                        is_training=False,
+                        # progress through model
+                        loss_value, val_pred = model_step(
+                            model=net,
+                            loss_fn=loss_fn,
+                            optimizer=optimizer,
+                            feature=feature,
+                            label=label,
+                            activation=activation,
+                            is_training=False,
+                        )
+
+                        # denormalize if needed
+                        if uses_11_normalization:
+                            label = denormalize_tensor_11(label, 0.0, data_range)
+                            val_pred = denormalize_tensor_11(val_pred, 0.0, data_range)
+
+                        acc_loss.append(loss_value.cpu().detach().numpy())
+                        acc_ssim.append(
+                            SSIM_Metr(val_pred, label).cpu().detach().numpy()
+                        )
+                        acc_msssim.append(
+                            MSSSIM_Metr(val_pred, label).cpu().detach().numpy()
+                        )
+
+                        ## ON THE FLY VALIDATION HOOK ##
+
+                        # update batch_pbar
+                        batch_pbar.update(1)
+
+                # we can also write them per feature
+                if write_val_per_feature:
+                    acc_loss = []
+                    acc_ssim = []
+                    acc_msssim = []
+
+                    # per feature metrics
+                    collector = {"val_MSE": {}, "val_SSIM": {}, "val_MSSSIM": {}}
+                    for i in range(num_channels):
+                        collector["val_MSE"][i] = []
+                        collector["val_SSIM"][i] = []
+                        collector["val_MSSSIM"][i] = []
+
+                    for _ in range(val_per_epoch):
+                        feature, label = next(tmp_val_loader)
+
+                        ## MOVE TO DEVICE
+                        label: torch.Tensor
+                        feature: torch.Tensor
+                        feature = feature.to(device)
+                        label = label.to(device)
+
+                        # progress through model
+                        loss_value, val_pred = model_step(
+                            model=net,
+                            loss_fn=loss_fn,
+                            optimizer=optimizer,
+                            feature=feature,
+                            label=label,
+                            activation=activation,
+                            is_training=False,
+                        )
+                        # append MSE
+                        acc_loss.append(loss_value.cpu().detach().numpy())
+                        for i in range(num_channels):
+                            collector["val_MSE"][i].append(
+                                MSE_val_Metr(
+                                    val_pred[:, i, :, :][:, np.newaxis, :, :],
+                                    label[:, i, :, :][:, np.newaxis, :, :],
+                                )
+                                .cpu()
+                                .detach()
+                                .numpy()
+                            )
+
+                        # denormalize if needed
+                        if uses_11_normalization:
+                            label = denormalize_tensor_11(label, 0.0, data_range)
+                            val_pred = denormalize_tensor_11(val_pred, 0.0, data_range)
+
+                        acc_ssim.append(
+                            SSIM_Metr(val_pred, label).cpu().detach().numpy()
+                        )
+                        acc_msssim.append(
+                            MSSSIM_Metr(val_pred, label).cpu().detach().numpy()
+                        )
+                        for i in range(num_channels):
+                            collector["val_SSIM"][i].append(
+                                SSIM_val_Metr(
+                                    val_pred[:, i, :, :][:, np.newaxis, :, :],
+                                    label[:, i, :, :][:, np.newaxis, :, :],
+                                )
+                                .cpu()
+                                .detach()
+                                .numpy()
+                            )
+                            collector["val_MSSSIM"][i].append(
+                                MSSSIM_val_Metr(
+                                    val_pred[:, i, :, :][:, np.newaxis, :, :],
+                                    label[:, i, :, :][:, np.newaxis, :, :],
+                                )
+                                .cpu()
+                                .detach()
+                                .numpy()
+                            )
+
+                        # update batch_pbar
+                        batch_pbar.update(1)
+
+                    # reset batch_pbar
+                    batch_pbar.colour = "green"
+                    batch_pbar.set_description("Writing to tensorboard...")
+
+                    # write to tensorboard
+                    writer.add_scalar(
+                        tag="val_MSE", scalar_value=np.mean(acc_loss), global_step=epoch
+                    )
+                    writer.add_scalar(
+                        tag="val_SSIM",
+                        scalar_value=np.mean(acc_ssim),
+                        global_step=epoch,
+                    )
+                    writer.add_scalar(
+                        tag="val_MSSSIM",
+                        scalar_value=np.mean(acc_msssim),
+                        global_step=epoch,
                     )
 
-                    acc_loss.append(loss_value.cpu().detach().numpy())
-                    acc_ssim.append(SSIM_Metr(val_pred, label).cpu().detach().numpy())
-                    acc_msssim.append(
-                        MSSSIM_Metr(val_pred, label).cpu().detach().numpy()
-                    )
-
-                    ## ON THE FLY VALIDATION HOOK ##
-
-                    # update batch_pbar
-                    batch_pbar.update(1)
-
-                # reset batch_pbar
-                batch_pbar.colour = "green"
-                batch_pbar.set_description("Writing to tensorboard...")
-
-                # write to tensorboard
-                writer.add_scalar(
-                    tag="val_MSE", scalar_value=np.mean(acc_loss), global_step=epoch
-                )
-                writer.add_scalar(
-                    tag="val_SSIM", scalar_value=np.mean(acc_ssim), global_step=epoch
-                )
-                writer.add_scalar(
-                    tag="val_MSSSIM",
-                    scalar_value=np.mean(acc_msssim),
-                    global_step=epoch,
-                )
+                    # write feature specific
+                    for i in range(num_channels):
+                        writer.add_scalar(
+                            tag=f"val_MSE/channel_{i}",
+                            scalar_value=np.mean(collector["val_MSE"][i]),
+                            global_step=epoch,
+                        )
+                        writer.add_scalar(
+                            tag=f"val_SSIM/channel_{i}",
+                            scalar_value=np.mean(collector["val_SSIM"][i]),
+                            global_step=epoch,
+                        )
+                        writer.add_scalar(
+                            tag=f"val_MSSSIM/channel_{i}",
+                            scalar_value=np.mean(collector["val_MSSSIM"][i]),
+                            global_step=epoch,
+                        )
 
                 # reset batch_pbar
                 batch_pbar.colour = "green"
@@ -282,6 +450,26 @@ def train(
                     torch.save(
                         net.state_dict(), f"{checkpoint_path}/model_optimal_msssim.pt"
                     )
+                if write_val_per_feature:
+                    for i in range(num_channels):
+                        if np.mean(collector["val_MSE"][i]) < optimal_feature_loss[i]:
+                            optimal_feature_loss[i] = np.mean(collector["val_MSE"][i])
+                            torch.save(
+                                net.state_dict(),
+                                f"{checkpoint_path}/model_best_channel_{i}.pt",
+                            )
+
+                        if (
+                            np.mean(collector["val_MSSSIM"][i])
+                            > optimal_feature_msssim[i]
+                        ):
+                            optimal_feature_msssim[i] = np.mean(
+                                collector["val_MSSSIM"][i]
+                            )
+                            torch.save(
+                                net.state_dict(),
+                                f"{checkpoint_path}/model_optimal_msssim_channel_{i}.pt",
+                            )
 
                 # Reset batch_pbar to training mode
                 batch_pbar.reset(total=steps_per_epoch)
