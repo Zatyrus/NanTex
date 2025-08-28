@@ -7,6 +7,7 @@ import warnings
 import itertools
 import webbrowser
 import numpy as np
+import albumentations as A
 from typing import List, Tuple, Union, Dict, Any, Optional, NoReturn, Callable, Type
 
 # for progress bar
@@ -28,11 +29,38 @@ from ..Util.file_handler_core import FileHandlerCore
 
 
 class OVERLAY_HELPER:
-    # %% Overlay Generation
+    # %% Helper
+    @staticmethod
+    def __standardize_img__(img:np.ndarray, perform_standardization:bool) -> np.ndarray:
+        if perform_standardization:
+            return ((img - np.mean(img)) / np.std(img))
+        return img
+
     @staticmethod
     def __cast_output_to_dtype__(arr: np.ndarray, dtype: Type[np.number]) -> np.ndarray:
         return arr.astype(dtype)
+    
+    @staticmethod
+    def __check_img_content__(img:np.ndarray, content_ratio:float) -> bool:
+        # check how many pixels are non-zero, i.e. contain information
+        if content_ratio == 0.0:
+            return True
+        elif content_ratio < 0:
+            raise ValueError("Content ratio must be non-negative")
+        content = np.count_nonzero(img) / img.size
+        return content >= content_ratio
+    
+    @staticmethod
+    def __save_patch_stack__(patch_collector: Dict[int, np.ndarray], data_path_out: str, key: str) -> None:
+        for i, patch in patch_collector.items():
+            if patch is not None:
+                np.save(f"{data_path_out}/{key}_patch_{i}.npy", patch)
+                
+    @staticmethod
+    def __ignore_flags__() -> List[str]:
+        return ["dtype_out", "rotation", "perform_standardization", "augmentation", "patches", "patch_content_ratio"]
 
+    # %% Overlay Generation
     @staticmethod
     def __overlay__(img_list: List[np.ndarray]) -> np.ndarray:
         return np.sum(img_list, axis=0)
@@ -46,13 +74,15 @@ class OVERLAY_HELPER:
         out = [
             data_in[key][value]
             for key, value in punchcard.items()
-            if key not in ["dtype"]
+            if key not in OVERLAY_HELPER.__ignore_flags__()
         ]
 
         # overlay imgs
         out.append(
             OVERLAY_HELPER.__cast_output_to_dtype__(
-                OVERLAY_HELPER.__overlay__(out), punchcard["dtype"]
+                OVERLAY_HELPER.__standardize_img__(
+                    OVERLAY_HELPER.__overlay__(out), punchcard["perform_standardization"]
+                ), punchcard["dtype_out"]
             )
         )
         return np.stack(out, axis=0)
@@ -66,7 +96,7 @@ class OVERLAY_HELPER:
         out = [
             data_in[key][value]
             for key, value in punchcard.items()
-            if key not in ["rotation", "dtype"]
+            if key not in OVERLAY_HELPER.__ignore_flags__()
         ]
 
         # rotate imgs
@@ -75,10 +105,48 @@ class OVERLAY_HELPER:
         # overlay imgs
         out.append(
             OVERLAY_HELPER.__cast_output_to_dtype__(
-                OVERLAY_HELPER.__overlay__(out), punchcard["dtype"]
+                OVERLAY_HELPER.__standardize_img__(
+                    OVERLAY_HELPER.__overlay__(out), punchcard["perform_standardization"]
+                ), punchcard["dtype_out"]
             )
         )
         return np.stack(out, axis=0)
+    
+    @staticmethod
+    def __generate_patches__(punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]], overlay_worker: Callable) -> Dict[int,np.ndarray]:
+        # generate base overlay (e.g. __generate_stack__)
+        tmp = overlay_worker(punchcard=punchcard, data_in=data_in)
+        img = tmp[-1,:,:] # <- overlay is always the last image in the stack
+        masks = list(tmp[:-1,:,:]) # <- all other images are masks
+
+        # generate patches
+        patch_collector: Dict[int,np.ndarray] = {i:None for i in range(punchcard["patches"])}
+        while any(v is None for v in patch_collector.values()):
+
+            # extract patch
+            augmented = punchcard["augmentation"](image=img, masks=masks)
+            augmented_img = augmented["image"]
+            augmented_masks = augmented["masks"]
+            
+            # check for content
+            if not OVERLAY_HELPER.__check_img_content__(augmented_img, punchcard["patch_content_ratio"]):
+                continue
+
+            # find empty patch
+            for i, patch in patch_collector.items():
+                if patch is None:
+                    patch_collector[i] = np.stack([*augmented_masks, augmented_img], axis=0)
+                    break
+                
+        return patch_collector
+
+    @staticmethod
+    def __generate_patch_overlay__(punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]) -> NoReturn:
+        return OVERLAY_HELPER.__generate_patches__(punchcard=punchcard, data_in=data_in, overlay_worker=OVERLAY_HELPER.__generate_stack__)
+
+    @staticmethod
+    def __generate_patch_rotation__(punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]) -> NoReturn:
+        return OVERLAY_HELPER.__generate_patches__(punchcard=punchcard, data_in=data_in, overlay_worker=OVERLAY_HELPER.__generate_stack_rotation__)
 
     @staticmethod
     @ray.remote(num_returns=1)
@@ -113,6 +181,44 @@ class OVERLAY_HELPER:
         )
 
         return key
+    
+    @staticmethod
+    @ray.remote(num_returns=1)
+    def __multi_core_worker_generate_patch_overlay__(
+        punchcard: Dict[str, Tuple[int, int]],
+        data_in: Dict[str, List[np.ndarray]],
+        data_path_out: str,
+    ) -> str:
+        # read punchcard
+        key, punchcard = list(punchcard.items())[0]
+        OVERLAY_HELPER.__save_patch_stack__(
+            patch_collector=OVERLAY_HELPER.__generate_patch_overlay__(
+                punchcard=punchcard, data_in=data_in
+            ),
+            data_path_out=data_path_out,
+            key=key
+        )
+
+        return key
+    
+    @staticmethod
+    @ray.remote(num_returns=1)
+    def __multi_core_worker_generate_patch_overlay__(
+        punchcard: Dict[str, Tuple[int, int]],
+        data_in: Dict[str, List[np.ndarray]],
+        data_path_out: str,
+    ) -> str:
+        # read punchcard
+        key, punchcard = list(punchcard.items())[0]
+        OVERLAY_HELPER.__save_patch_stack__(
+            patch_collector=OVERLAY_HELPER.__generate_patch_overlay__(
+                punchcard=punchcard, data_in=data_in
+            ),
+            data_path_out=data_path_out,
+            key=key
+        )
+
+        return key
 
 
 class OverlayGenerator(FileHandlerCore):
@@ -124,34 +230,215 @@ class OverlayGenerator(FileHandlerCore):
     ]  # key: data name, value: dict of data <- input_key, mod_instructions
 
     mode: str
+    augment: bool
+    patches: int
+    patchsize: Tuple[int, int]
+    imagesize: Tuple[int, int]
     multi_core: bool
+    sleeptime: float
+    dtype_out: np.dtype
     metadata: Dict[str, Any]
+    augmentation_pipeline: A.Compose
     DEBUG: bool
+    disable_auto_standardization: bool
+    patch_content_ratio: float
 
     cluster_context: Optional[Any]  # ray cluster context
+
+    # set properties
+    @property
+    def mode(self):
+        return self._mode
+
+    @mode.setter
+    def mode(self, value):
+        self._mode = value
+        self._update_metadata("mode", value)
+
+    @property
+    def augment(self):
+        return self._augment
+
+    @augment.setter
+    def augment(self, value):
+        self._augment = value
+        self._update_metadata("augment", value)
+
+    @property
+    def patches(self):
+        return self._patches
+
+    @patches.setter
+    def patches(self, value):
+        self._patches = value
+        self._update_metadata("patches", value)
+
+    @property
+    def patchsize(self):
+        return self._patchsize
+
+    @patchsize.setter
+    def patchsize(self, value):
+        self._patchsize = value
+        self._update_metadata("patchsize", value)
+        
+    @property
+    def imagesize(self):
+        return self._imagesize
+
+    @imagesize.setter
+    def imagesize(self, value):
+        self._imagesize = value
+        self._update_metadata("imagesize", value)
+
+    @property
+    def multi_core(self):
+        return self._multi_core
+
+    @multi_core.setter
+    def multi_core(self, value):
+        self._multi_core = value
+        self._update_metadata("multi_core", value)
+    
+    @property
+    def DEBUG(self):
+        return self._DEBUG
+
+    @DEBUG.setter
+    def DEBUG(self, value):
+        self._DEBUG = value
+        self._update_metadata("DEBUG", value)
+
+    @property
+    def sleeptime(self):
+        return self._sleeptime
+
+    @sleeptime.setter
+    def sleeptime(self, value):
+        self._sleeptime = value
+        self._update_metadata("sleeptime", value)
+        
+    @property
+    def dtype_out(self):
+        return self._dtype_out
+
+    @dtype_out.setter
+    def dtype_out(self, value):
+        self._dtype_out = value
+        self._update_metadata("dtype_out", value)
+        
+    @property
+    def patch_content_ratio(self):
+        return self._patch_content_ratio
+    @patch_content_ratio.setter
+    def patch_content_ratio(self, value):
+        self._patch_content_ratio = value
+        self._update_metadata("patch_content_ratio", value)
+        
+    @property
+    def disable_auto_standardization(self):
+        return self._disable_auto_standardization
+    @disable_auto_standardization.setter
+    def disable_auto_standardization(self, value):
+        self._disable_auto_standardization = value
+        self._update_metadata("disable_auto_standardization", value)
+        
+    @property
+    def augmentation_pipeline(self):
+        return self._augmentation_pipeline
+    @augmentation_pipeline.setter
+    def augmentation_pipeline(self, value):
+        self._augmentation_pipeline = value
 
     def __init__(
         self,
         data_paths_in: Dict[str, List[str]],
         data_path_out: str = None,
         mode: str = "overlay",
+        augment: bool = False,
+        patches: int = None,
+        patchsize: Tuple[int, int] = (64, 64),
+        imagesize: Tuple[int, int] = (4096, 4096),
         multi_core: bool = False,
-        DEBUG: bool = False,
+        *args,
+        **kwargs
     ) -> None:
+        
         # data variables
         self.data_paths_in = data_paths_in
         self.data_path_out = data_path_out
         self.data_in = {}
         self.data_punchcards = {}
-
-        # control variables
-        self.mode = mode
-        self.multi_core = multi_core
-        self.DEBUG = DEBUG
-
+        
         # internal variables
         self.metadata = {}
+        
+        # populate values
+        self._mode = mode
+        self._augment = augment
+        self._patches = patches
+        self._patchsize = patchsize
+        self._imagesize = imagesize
+        self._multi_core = multi_core
 
+        # handle sleep time
+        self._sleeptime = 0.0
+        if "sleeptime" in kwargs:
+            self._sleeptime = kwargs["sleeptime"]
+
+        # handle DEBUG
+        self._DEBUG = False
+        if "DEBUG" in kwargs:
+            self._DEBUG = kwargs["DEBUG"]
+
+        # handle dtype_out
+        if self._patches:
+            if self._DEBUG:
+                print("Patch mode detected. Setting output dtype to float32.")
+            self._dtype_out = np.float32
+        else:
+            if self._DEBUG:
+                print("Full image mode detected. Setting output dtype to uint16.")
+            self._dtype_out = np.uint16
+        if "dtype_out" in kwargs:
+            if self._DEBUG:
+                print("User input detected. Overriding output dtype.")
+            self._dtype_out = kwargs["dtype_out"]
+
+        # handle augmentation pipeline
+        self._augmentation_pipeline = None
+        if "augmentation_pipeline" in kwargs:
+            self._augmentation_pipeline = kwargs["augmentation_pipeline"]
+            
+        # handle disable auto-standardization
+        if patches:
+            if self._DEBUG:
+                print("Patch mode detected. Auto-standardization enabled.")
+            self._disable_auto_standardization = False
+        else:
+            if self._DEBUG:
+                print("Full image mode detected. Auto-standardization disabled.")
+            self._disable_auto_standardization = True
+            
+        if "disable_auto_standardization" in kwargs:
+            if self._DEBUG:
+                print("User input detected. Overriding auto-standardization setting.")
+            self._disable_auto_standardization = kwargs["disable_auto_standardization"]
+            
+        # handle patch content grace interval
+        self._patch_content_ratio = 0.0
+        if "patch_content_ratio" in kwargs:
+            self._patch_content_ratio = kwargs["patch_content_ratio"]
+
+        # DEBUG messages
+        if self._DEBUG:
+            if self._patches:
+                print("Patch mode activated.")                
+            if self._disable_auto_standardization:
+                print("Auto-standardization disabled.")
+            if self._patch_content_ratio > 0:
+                print(f"Patch content grace interval set to {self._patch_content_ratio}.")
+        
         # Call from parent class
         self.__post_init__()
 
@@ -201,33 +488,51 @@ class OverlayGenerator(FileHandlerCore):
         self.data_punchcards = {}
 
         ## generate punchcards
-        if self.DEBUG:
+        if self._DEBUG:
             print("Generating punchcards...")
 
-        if self.mode == "overlay":
+        if self._mode == "overlay":
             self.__generate_punchcard_overlay__()
-        elif self.mode == "rotation":
+        elif self._mode == "rotation":
             self.__generate_punchcard_overlay_rotation__()
         else:
             warnings.warn("Mode not supported yet...")
+            
+        # add augmentations on demand
+        if self._patches:
+            if self._DEBUG:
+                print("Initializing patch mode...")
+            if not self._augment:
+                if self._DEBUG:
+                    print("Augmentations disabled. Falling back to patch generation only.")
+                self.__setup_patch_pipeline_no_augmentation__()
+                self.__generate_punchcard_patch_augmentation__()
+            elif self._augment:
+                if self._DEBUG:
+                    print("Initializing augmentation pipeline...")
+                self.__setup_patch_pipeline_with_augmentation__()
+                self.__generate_punchcard_patch_augmentation__()
 
     def generate_overlay(
-        self, patchsize: Tuple[int, int], max_val: Union[float, int] = 255
+        self
     ) -> NoReturn:
+        ## perform checks; see below for more info
+        self.__perform_checkup__()
+
         ## pad input images
-        self.__pad_input_imgs__(patchsize=patchsize)
+        self.__pad_input_imgs__()
 
         ## normalize input images
-        self.__normalize_input_imgs__(max_val=max_val)
+        self.__normalize_input_imgs__()
 
         ## generate punchcards
         self.generate_punchcards()
 
         ## generate overlay
-        if self.DEBUG:
+        if self._DEBUG:
             print("Generating overlay...")
 
-        if self.multi_core:
+        if self._multi_core:
             if self.__check_ray_status__():
                 self.__run_multi_core__()
             else:
@@ -270,64 +575,113 @@ class OverlayGenerator(FileHandlerCore):
         for punchcard in self.__generate_stencil__():
             # add file reference to punchcard
             self.data_punchcards[
-                f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
+                f"{len(self.data_in.keys())}_feature_{self._mode}_{punchcard}"
             ] = {
                 list(self.data_in.keys())[i]: punchcard[i]
                 for i in range(len(self.data_in.keys()))
             }
             # add dtype to punchcard
             self.data_punchcards[
-                f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
-            ].update({"dtype": self.metadata["dtype"]})
+                f"{len(self.data_in.keys())}_feature_{self._mode}_{punchcard}"
+            ].update({"dtype_out": self._dtype_out})
+            # add standardization to punchcard
+            self.data_punchcards[
+                f"{len(self.data_in.keys())}_feature_{self._mode}_{punchcard}"
+            ].update({"perform_standardization": not self._disable_auto_standardization})
 
     def __generate_punchcard_overlay_rotation__(self) -> NoReturn:
         for punchcard in self.__generate_stencil_rotation__():
             # add file reference to punchcard
             self.data_punchcards[
-                f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
+                f"{len(self.data_in.keys())}_feature_{self._mode}_{punchcard}"
             ] = {
                 list(self.data_in.keys())[i]: punchcard[i]
                 for i in range(len(self.data_in.keys()))
             }
             # add rotation to punchcard
             self.data_punchcards[
-                f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
+                f"{len(self.data_in.keys())}_feature_{self._mode}_{punchcard}"
             ].update({"rotation": punchcard[len(self.data_in.keys()) :]})
             # add dtype to punchcard
             self.data_punchcards[
-                f"{len(self.data_in.keys())}_feature_{self.mode}_{punchcard}"
-            ].update({"dtype": self.metadata["dtype"]})
+                f"{len(self.data_in.keys())}_feature_{self._mode}_{punchcard}"
+            ].update({"dtype_out": self._dtype_out})
+            # add standardization to punchcard
+            self.data_punchcards[
+                f"{len(self.data_in.keys())}_feature_{self._mode}_{punchcard}"
+            ].update({"perform_standardization": not self._disable_auto_standardization})
+
+    def __generate_punchcard_patch_augmentation__(self) -> NoReturn:
+        # as these punchcard will always be triggered after the initial generation (e.g. overlay), we can directly reference the punchcards stored in self.data_punchcards
+        for punchcard in self.data_punchcards:
+            self.data_punchcards[punchcard].update(
+                {"augmentation": self._augmentation_pipeline,
+                 "patches": self._patches,
+                 "patch_content_ratio": self._patch_content_ratio}
+            )
 
     # %% Single Core Execution
     def __single_core_main__(self, stack_generation: Callable, desc: str) -> NoReturn:
-        with tqdm(
-            total=len(self.data_punchcards.keys()), desc=desc, file=sys.stdout
-        ) as pbar:
-            # iterate over punchcards
-            for key, punchcard in self.data_punchcards.items():
-                np.save(
-                    f"{self.data_path_out}/{key}.npy",
-                    stack_generation(punchcard=punchcard, data_in=self.data_in),
-                )
+        if self.patches:
+            with tqdm(
+                total=len(self.data_punchcards.keys()), desc=desc, file=sys.stdout
+            ) as pbar:
+                # iterate over punchcards
+                for key, punchcard in self.data_punchcards.items():
+                    OVERLAY_HELPER.__save_patch_stack__(patch_collector=stack_generation(punchcard=punchcard, 
+                                                                                         data_in=self.data_in), 
+                                                        data_path_out=self.data_path_out, 
+                                                        key=key)
 
-                ## update progress bar
-                pbar.update(1)
+                    ## update progress bar
+                    pbar.update(1)
 
-            # handle pbar
-            pbar.colour = "green"
-            pbar.close()
+                # handle pbar
+                pbar.colour = "green"
+                pbar.close()
+        
+        else:
+            with tqdm(
+                total=len(self.data_punchcards.keys()), desc=desc, file=sys.stdout
+            ) as pbar:
+                # iterate over punchcards
+                for key, punchcard in self.data_punchcards.items():
+                    np.save(
+                        f"{self.data_path_out}/{key}.npy",
+                        stack_generation(punchcard=punchcard, data_in=self.data_in),
+                    )
+
+                    ## update progress bar
+                    pbar.update(1)
+
+                # handle pbar
+                pbar.colour = "green"
+                pbar.close()
+                
 
     def __run_single_core__(self) -> NoReturn:
-        if self.mode == "overlay":
-            self.__single_core_main__(
-                stack_generation=OVERLAY_HELPER.__generate_stack__,
-                desc="Generating Single Core Overlays...",
-            )
-        elif self.mode == "rotation":
-            self.__single_core_main__(
-                stack_generation=OVERLAY_HELPER.__generate_stack_rotation__,
-                desc="Generating Single Core Rotational Overlays...",
-            )
+        if self._mode == "overlay":
+            if self._patches:
+                self.__single_core_main__(
+                    stack_generation=OVERLAY_HELPER.__generate_patch_overlay__,
+                    desc="Generating Single Core Patch Overlays...",
+                )
+            else:
+                self.__single_core_main__(
+                    stack_generation=OVERLAY_HELPER.__generate_stack__,
+                    desc="Generating Single Core Overlays...",
+                )
+        elif self._mode == "rotation":
+            if self._patches:
+                self.__single_core_main__(
+                    stack_generation=OVERLAY_HELPER.__generate_patch_rotation__,
+                    desc="Generating Single Core Patch Rotations...",
+                )
+            else:
+                self.__single_core_main__(
+                    stack_generation=OVERLAY_HELPER.__generate_stack_rotation__,
+                    desc="Generating Single Core Rotational Overlays...",
+                )
         else:
             warnings.warn("Mode not supported yet...")
 
@@ -335,7 +689,7 @@ class OverlayGenerator(FileHandlerCore):
     def __setup_ray__(
         self, num_cpu: int, num_gpu: int, launch_dashboard: bool
     ) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Setting up Ray...")
 
         # shutdown any stray ray instances
@@ -355,34 +709,34 @@ class OverlayGenerator(FileHandlerCore):
             except Exception as e:
                 print(f"Error: {e}")
 
-        if self.DEBUG:
+        if self._DEBUG:
             print("Ray setup complete...")
             print(f"Ray Dashboard: {cluster_context.dashboard_url}")
         self._ray_instance = cluster_context
 
     def __shutdown_ray__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Shutting down Ray...")
         ray.shutdown()
 
     def __offload_punchcards_to_ray__(self) -> List[ray.ObjectRef]:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Offloading punchcards to Ray...")
         return [
             ray.put({key: punchcard}) for key, punchcard in self.data_punchcards.items()
         ]
 
     def __offload_data_in_to_ray__(self) -> List[ray.ObjectRef]:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Offloading data_in to Ray...")
         return ray.put(self.data_in)
 
     def __offload_data_path_out_to_ray__(self) -> ray.ObjectRef:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Offloading data_outpath to Ray...")
         return ray.put(self.data_path_out)
 
-    def __multi_core_main__(self, worker: Callable, sleep_time: float) -> NoReturn:
+    def __multi_core_main__(self, worker: Callable) -> NoReturn:
         ## offload data
         data_in_ref = self.__offload_data_in_to_ray__()
         punchcard_refs = self.__offload_punchcards_to_ray__()
@@ -400,8 +754,7 @@ class OverlayGenerator(FileHandlerCore):
                     punchcard_refs, desc="Scheduling Workers", position=0
                 )
             ],
-            total=len(punchcard_refs),
-            sleep_time=sleep_time,
+            total=len(punchcard_refs)
         )
 
         ## check completion
@@ -420,23 +773,34 @@ class OverlayGenerator(FileHandlerCore):
 
     def __run_multi_core__(self) -> NoReturn:
         ## run multi core
-        if self.mode == "overlay":
-            self.__multi_core_main__(
-                worker=OVERLAY_HELPER.__multi_core_worker_generate_stack__,
-                sleep_time=self.metadata["sleeptime"],
-            )
-        elif self.mode == "rotation":
-            self.__multi_core_main__(
-                worker=OVERLAY_HELPER.__multi_core_worker_generate_stack_rotation__,
-                sleep_time=self.metadata["sleeptime"],
-            )
+        if self._mode == "overlay":
+            if self._patches:
+                self.__multi_core_main__(
+                    worker=OVERLAY_HELPER.__multi_core_worker_generate_patch_overlay__,
+                    sleep_time=self.metadata["sleeptime"],
+                )
+            else:
+                self.__multi_core_main__(
+                    worker=OVERLAY_HELPER.__multi_core_worker_generate_stack__,
+                    sleep_time=self.metadata["sleeptime"],
+                )
+        elif self._mode == "rotation":
+            if self._patches:
+                self.__multi_core_main__(
+                    worker=OVERLAY_HELPER.__multi_core_worker_generate_patch_rotation__,
+                    sleep_time=self.metadata["sleeptime"],
+                )
+            else:
+                self.__multi_core_main__(
+                    worker=OVERLAY_HELPER.__multi_core_worker_generate_stack_rotation__,
+                    sleep_time=self.metadata["sleeptime"],
+                )
         else:
             warnings.warn("Mode not supported yet...")
 
     # %% Helper Functions
     def __pad_img__(
-        self, img: np.ndarray, y_lim: int, x_lim: int, patchsize: Tuple[int, int] = None
-    ) -> np.ndarray:
+        self, img: np.ndarray, y_lim: int, x_lim: int) -> np.ndarray:
         # determine padding
         y_pad = max(0, int(np.round((y_lim - img.shape[0]) / 2)))
         x_pad = max(0, int(np.round((x_lim - img.shape[1]) / 2)))
@@ -447,29 +811,29 @@ class OverlayGenerator(FileHandlerCore):
         out[y_pad : img.shape[0] + y_pad, x_pad : img.shape[1] + x_pad] = img
 
         # crop to limit
-        if patchsize:
+        if self._imagesize:
             # calculate cropping coordinates
-            y_start = int(np.floor((y_lim - patchsize[0]) / 2))
-            y_end = -(int(np.floor((y_lim - patchsize[0]) / 2)) + 1)
-            x_start = int(np.floor((x_lim - patchsize[1]) / 2))
-            x_end = -(int(np.floor((x_lim - patchsize[1]) / 2)) + 1)
+            y_start = int(np.floor((y_lim - self._imagesize[0]) / 2))
+            y_end = -(int(np.floor((y_lim - self._imagesize[0]) / 2)) + 1)
+            x_start = int(np.floor((x_lim - self._imagesize[1]) / 2))
+            x_end = -(int(np.floor((x_lim - self._imagesize[1]) / 2)) + 1)
 
             # catch rounding issues
             # rounding to the 0th decimal may introduce offsets by up to 1 pixel per limit
-            if np.abs(y_lim - y_start + y_end - patchsize[0]) == 1:
+            if np.abs(y_lim - y_start + y_end - self._imagesize[0]) == 1:
                 y_end += 1  # hence, we adjust the end coordinate
-            elif np.abs(y_lim - y_start + y_end - patchsize[0]) == 2:
+            elif np.abs(y_lim - y_start + y_end - self._imagesize[0]) == 2:
                 y_start -= 1  # hence, we adjust the start coordinate
                 y_end += 1  # and the end coordinate
-            if np.abs(x_lim - x_start + x_end - patchsize[1]) == 1:
+            if np.abs(x_lim - x_start + x_end - self._imagesize[1]) == 1:
                 x_end += 1
-            elif np.abs(x_lim - x_start + x_end - patchsize[1]) == 2:
+            elif np.abs(x_lim - x_start + x_end - self._imagesize[1]) == 2:
                 x_start -= 1
                 x_end += 1
             # in case the cropping coordinates are off by more than 2 pixels, somethings bad has happened and we raise an exception.
             if (
-                np.abs(y_lim - y_start + y_end - patchsize[0]) > 2
-                or np.abs(x_lim - x_start + x_end - patchsize[1]) > 2
+                np.abs(y_lim - y_start + y_end - self._imagesize[0]) > 2
+                or np.abs(x_lim - x_start + x_end - self._imagesize[1]) > 2
             ):
                 raise ValueError("Cropping coordinates are off by more than 2 pixels.")
 
@@ -479,11 +843,19 @@ class OverlayGenerator(FileHandlerCore):
         return out
 
     def __normalize_img__(
-        self, img: np.ndarray, max_val: Union[float, int] = 255
-    ) -> np.ndarray:
-        return ((img - np.min(img)) / (np.max(img) - np.min(img)) * max_val).astype(
-            self.metadata["dtype"]
-        )  # <- we cast to the expected/wanted dtype
+        self, img: np.ndarray) -> np.ndarray:
+        # if we expect to output float32 or float64, we will normalize to [0,1]
+        if self._dtype_out in {np.float32, np.float64, "float32", "float64"}:
+            return ((img - np.iinfo(img.dtype).min) / (np.iinfo(img.dtype).max - np.iinfo(img.dtype).min)).astype(
+                self._dtype_out
+            )
+        # if we expect to output uint8 or uint16, we will normalize to [0,255] <- to keep compatibility
+        elif self._dtype_out in {np.uint8, np.uint16, "uint8", "uint16"}:
+            return ((img - np.min(img)) / (np.max(img) - np.min(img)) * 255).astype(
+                self._dtype_out
+            )
+        else:
+            raise ValueError("Unsupported output dtype. Please choose from float32, float64, uint8, uint16.")
 
     def get_x_lim(self) -> int:
         return max([img.shape[1] for img in sum(list(self.data_in.values()), [])])
@@ -491,13 +863,54 @@ class OverlayGenerator(FileHandlerCore):
     def get_y_lim(self) -> int:
         return max([img.shape[0] for img in sum(list(self.data_in.values()), [])])
 
+    def __setup_patch_pipeline_no_augmentation__(self) -> NoReturn:
+        if self._DEBUG:
+            print("Setting up patch pipeline without augmentation...")
+        # setup patch pipeline without augmentation
+        self._augmentation_pipeline = A.Compose([
+            A.RandomCrop(height=self._patchsize[0], width=self._patchsize[1]),
+        ])
+        
+    def __setup_patch_pipeline_with_augmentation__(self) -> NoReturn:
+        if self._DEBUG:
+            print("Setting up patch pipeline with augmentation...")
+        if self._augmentation_pipeline is None:
+            if self._DEBUG:
+                print("No augmentation pipeline found, falling back to default...")
+            self._augmentation_pipeline = A.Compose([
+                A.RandomCrop(height=self._patchsize[0], width=self._patchsize[1]),
+                A.HorizontalFlip(p=0.5),
+                A.VerticalFlip(p=0.5),
+            ])
+        else:
+            # check the type and compose if necessary
+            if type(self._augmentation_pipeline) is not A.Compose:
+                if self.__is_iterable__(self._augmentation_pipeline):
+                    if self._DEBUG:
+                        print("Composing augmentation pipeline from iterable...")
+                    self._augmentation_pipeline = A.Compose([*self._augmentation_pipeline])
+                else:
+                    if self._DEBUG:
+                        print("Composing augmentation pipeline from single transform...")
+                    self._augmentation_pipeline = A.Compose([self._augmentation_pipeline])
+            
+            # check if random crop is applied
+            if self._patches:
+                if not any(
+                    isinstance(t, A.RandomCrop) for t in self._augmentation_pipeline.transforms
+                ):
+                    self._augmentation_pipeline.transforms.insert(0, A.RandomCrop(height=self._patchsize[0], width=self._patchsize[1]))
+                    
+                    if self._DEBUG:
+                        print("RandomCrop not found in augmentation pipeline, adding it as the first transform...")
+
+    # %% Ray 
     def __listen_to_ray_progress__(
         self,
         object_references: List[ray.ObjectRef],
         total: int,
-        sleep_time: float = 0.1,
     ) -> bool:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Setting up progress monitors...")
         ## create progress monitors
         msd_progress = tqdm(total=total, desc="Workers", position=1)
@@ -516,7 +929,7 @@ class OverlayGenerator(FileHandlerCore):
 
         finished_states = []
 
-        if self.DEBUG:
+        if self._DEBUG:
             print("Listening to Ray Progress...")
         ## listen for progress
         while len(object_references) > 0:
@@ -539,7 +952,7 @@ class OverlayGenerator(FileHandlerCore):
                 msd_progress.refresh()
 
                 # sleep for a bit
-                time.sleep(sleep_time)
+                time.sleep(self.metadata["sleeptime"])
 
             except KeyboardInterrupt:
                 print("Interrupted")
@@ -560,13 +973,13 @@ class OverlayGenerator(FileHandlerCore):
         cpu_progress.close()
         mem_progress.close()
 
-        if self.DEBUG:
+        if self._DEBUG:
             print("Ray Progress Complete...")
 
         return True, finished_states
 
     def __check_ray_status__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Checking Ray Status...")
         return ray.is_initialized()
 
@@ -589,35 +1002,99 @@ class OverlayGenerator(FileHandlerCore):
         self.__post_init__()
 
     # %% Pre-Processing
-    def __pad_input_imgs__(self, patchsize: Tuple[int, int]) -> NoReturn:
-        if self.DEBUG:
+    def __pad_input_imgs__(self) -> NoReturn:
+        if self._DEBUG:
             print("Padding input images...")
         for key, value in self.data_in.items():
             self.data_in[key] = [
                 self.__pad_img__(
                     img=img,
                     y_lim=self.metadata["y_lim"],
-                    x_lim=self.metadata["x_lim"],
-                    patchsize=patchsize,
+                    x_lim=self.metadata["x_lim"]
                 )
                 for img in value
             ]
 
-    def __normalize_input_imgs__(self, max_val: Union[float, int]) -> NoReturn:
-        if self.DEBUG:
+    def __normalize_input_imgs__(self) -> NoReturn:
+        if self._DEBUG:
             print("Normalizing input images...")
         for key, value in self.data_in.items():
             self.data_in[key] = [
-                self.__normalize_img__(img=img, max_val=max_val) for img in value
-            ]
+                self.__normalize_img__(img=img) for img in value
+            ]   
 
     # %% Metadata Handling
     def __setup_metadata__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Setting up metadata...")
         self.metadata = {
             "x_lim": self.get_x_lim(),
             "y_lim": self.get_y_lim(),
-            "dtype": np.uint16,
-            "sleeptime": 0.0,
+            "dtype_out": self._dtype_out, # a bit hefty in storage, but worth the cost in memory
+            "mode": self._mode,
+            "multi_core": self._multi_core,
+            "patches": self._patches,
+            "imagesize": self._imagesize,
+            "patchsize": self._patchsize,
+            "augment": self._augment,
+            "DEBUG": self._DEBUG,
+            "sleeptime": self._sleeptime,
+            "patch_content_ratio": self._patch_content_ratio,
+            "disable_auto_standardization": self._disable_auto_standardization,
         }
+
+    def _update_metadata(self, key: str, value: Any) -> NoReturn:
+        if key in self.metadata:
+            self.metadata[key] = value
+        else:
+            raise KeyError(f"Metadata key '{key}' not found.")
+
+    # %% Safety checks
+    def __perform_checkup__(self) -> NoReturn:
+        if self._DEBUG:
+            print("Performing startup checks...")
+        # startup checks
+        startup_check = self.__startup_check__()
+        if startup_check is not True:
+            raise ValueError(f"Startup check failed: {startup_check}")
+
+        # check expected output type
+        self.__check_expected_output__()
+
+        # check for suboptimal dtype usage
+        self.__check_suboptimal_dtype__()
+
+        # handle disable_auto_standardization warnings
+        self.__handle_disable_auto_standardization__()
+    
+    def __startup_check__(self) -> Union[bool, str]:
+        if self._DEBUG:
+            print("Starting up checks...")
+        if not self.data_in:
+            return "No input data found."
+        if not self.metadata:
+            return "Metadata not set up."
+        return True
+
+    def __check_expected_output__(self) -> NoReturn:
+        if self._dtype_out not in {np.float32, np.float64, np.uint8, np.uint16, 'float32', 'float64', 'uint8', 'uint16'}:
+            raise ValueError("Unsupported output dtype. Please choose from float32, float64, uint8, uint16.")
+        
+    def __check_suboptimal_dtype__(self) -> NoReturn:
+        if self._dtype_out in {np.uint8, np.uint16, 'uint8', 'uint16'} and self._patches:
+            warnings.warn("Using patch generation with output dtype uint8 or uint16 may lead to unexpected results. Consider using float32 or float64 as output dtype.")
+        elif self._dtype_out in {np.float32, np.float64, 'float32', 'float64'} and not self._patches:
+            warnings.warn("Using float32 or float64 output dtype with full width overlay generation will lead to significant file size increases. Consider using uint8 or uint16 as output dtype.")
+            
+    def __handle_disable_auto_standardization__(self) -> NoReturn:
+        if self._disable_auto_standardization:
+            if self._DEBUG:
+                print("Auto-standardization disabled.")
+            if self._dtype_out in {np.float32, np.float64, 'float32', 'float64'}:
+                warnings.warn("Auto-standardization disabled while output dtype is float32 or float64.")
+        elif not self._disable_auto_standardization:
+            if self._DEBUG:
+                print("Auto-standardization enabled.")
+            if self._dtype_out in {np.uint8, np.uint16, 'uint8', 'uint16'}:
+                warnings.warn("Auto-standardization enabled while output dtype is uint8 or uint16. Disabling auto-standardization to prevent unexpected results.")
+                self._disable_auto_standardization = True
