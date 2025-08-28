@@ -13,14 +13,23 @@ test_transform_schedule: List[A.ImageOnlyTransform]
 # Define the train augmentation pipelines
 train_transform_schedule = [
     A.RandomCrop(
-        256, 256, always_apply=True
+        256,
+        256,
+        p=1,  # <- always apply
     ),  # Randomly crop the image <- choose a random crop of 256x256
     A.HorizontalFlip(p=0.5),  # Randomly flip the image horizontally (50% of the time)
     A.VerticalFlip(p=0.5),  # Randomly flip the image vertically (50% of the time)
-    A.MedianBlur(
-        p=1, blur_limit=(3, 5)
-    ),  # Apply median blur with a 30% probability, kernes size is 5 <- play with the size to enhance the effect. ADJUST IF, SHOULD OPENCV THROW A WEIRD ERROR. (https://stackoverflow.com/questions/13193207/unsupported-format-or-combination-of-formats-when-using-cvreduce-method-in-ope)
+    # Apply median blur with a 30% probability, kernes size is 5 <- play with the size to enhance the effect.
+    # ADJUST IF, SHOULD OPENCV THROW A WEIRD ERROR.
+    # (https://stackoverflow.com/questions/13193207/unsupported-format-or-combination-of-formats-when-using-cvreduce-method-in-ope)
+    A.MedianBlur(p=0.3, blur_limit=3),
 ]
+
+# building blocks for various applications in microscopy
+# building blocks = [A.GaussNoise(p=0.5),
+#                    A.MedianBlur(p=0.7, blur_limit=(3, 5)),
+#                    A.RandomBrightnessContrast(p=0.3, brightness_limit=0.2, contrast_limit=0.2)]
+
 
 # Define the validation augmentation pipelines
 # it is important to have the same transformations for validation
@@ -30,7 +39,7 @@ val_transform_schedule = train_transform_schedule
 # note that we do not want to apply blurring or other soft transformations as we assume peak quality for the test set
 # in training, we use blurring to make the model more robust to noise
 test_transform_schedule = [
-    A.RandomCrop(256, 256, always_apply=True),
+    A.RandomCrop(256, 256, p=1),  # p=1 == apply always
     A.HorizontalFlip(p=0.5),
     A.VerticalFlip(p=0.5),
 ]
