@@ -1,10 +1,12 @@
 ## Dependencies
 import os
+import gc
 import sys
 import torch
 import numpy as np
 import pathlib as pl
 from skimage import io
+import subprocess as sp
 import matplotlib.pyplot as plt
 from patchify import patchify, unpatchify
 
@@ -14,7 +16,6 @@ from typing import List, Tuple, Union, Dict, Any, Optional, NoReturn
 # for progress bar
 # detect jupyter notebook
 from IPython import get_ipython
-import torch.utils
 
 try:
     ipy_str = str(type(get_ipython()))
@@ -38,6 +39,8 @@ class Oneiros(FileHandlerCore):
     data_dream: Dict[str, np.ndarray]
 
     DEBUG: bool
+    VERBOSE: bool
+    FREEMEMORY: bool
     mode: str
     metadata: Dict[str, Any]
     shape_adjuster: int
@@ -54,6 +57,8 @@ class Oneiros(FileHandlerCore):
         num_channels_out: int = None,
         mode: str = "has_ground_truth",
         DEBUG: bool = False,
+        VERBOSE: bool = True,
+        FREEMEMORY: bool = False,
     ) -> None:
         # data variables
         self.data_paths_in = data_paths_in
@@ -69,6 +74,8 @@ class Oneiros(FileHandlerCore):
         self.num_channels_out = num_channels_out
 
         # control variables
+        self.FREEMEMORY = FREEMEMORY
+        self.VERBOSE = VERBOSE
         self.DEBUG = DEBUG
         self.mode = mode
 
@@ -90,6 +97,20 @@ class Oneiros(FileHandlerCore):
 
             if self.mode == "has_ground_truth":
                 self.shape_adjuster = 1
+
+            if self.VERBOSE:
+                print("VERBOSE mode is ON")
+                if self.DEBUG:
+                    print("DEBUG mode is ON")
+
+            if self.FREEMEMORY:
+                print("WARNING: You are using the FREEMEMORY mode.")
+                print("Oneiros will automatically free up memory when possible.")
+                print(
+                    "You will not be able to retain the dream data after the dream finished."
+                )
+                print("This may lead to unexpected behavior.")
+                print("You have been warned.")
 
             if self.DEBUG:
                 print("Oneiros Initialized...")
@@ -116,6 +137,7 @@ class Oneiros(FileHandlerCore):
                 },
                 "patch_size": (256, 256),
                 "dream_memory_shape": None,
+                "dream_dtype": np.float32,
                 "patch_array_shape": None,
                 "standardize": True,
                 "normalize": False,
@@ -163,6 +185,34 @@ class Oneiros(FileHandlerCore):
     @classmethod
     def without_ground_truth(cls, **kwargs) -> "Oneiros":
         return cls.from_explorer(mode="no_ground_truth", **kwargs)
+
+    @classmethod
+    def random_selection_with_ground_truth(
+        cls, num_selection: int, **kwargs
+    ) -> "Oneiros":
+        ## initialize
+        data_paths_in: Dict[str, List[str]] = {}
+
+        ## notify user
+        print("You are using an experimental mode meant for research purposes.")
+        print(
+            "Please be aware that this mode may not be fully stable and that the results you obtain may vary."
+        )
+        print(f"Randomly selecting {num_selection} samples with ground truth...")
+
+        ## get data paths
+        files_tmp = pD.askFILES(query_title="Please select the data files")
+        data_paths_in.update(
+            {f"dream_{i}": files_tmp[i] for i in range(len(files_tmp))}
+        )
+
+        ## random selection
+        selected_files = np.random.choice(files_tmp, size=num_selection, replace=False)
+        data_paths_in = {
+            f"dream_{i}": selected_files[i] for i in range(len(selected_files))
+        }
+
+        return cls(data_paths_in=data_paths_in, mode="has_ground_truth", **kwargs)
 
     # %% Classmethods Linux
     @classmethod
@@ -304,6 +354,143 @@ class Oneiros(FileHandlerCore):
             print("Waking up...")
         self.__post_process_data__()
 
+    def inception(
+        self, sub_dream_size: int = 50, grace_interval: float = 0.8
+    ) -> NoReturn:
+        ## the inception mode chunks dreams into smaller pieces to fit them better on the GPU
+        if self.DEBUG:
+            print("Inception mode activated.")
+            print(f"Proposed dream size: {sub_dream_size}")
+
+        # run pre_processing
+        if self.DEBUG:
+            print("Going to bed...")
+        self.__pre_process_data__()
+
+        # we check if the proposed dream size fits well in the GPU memory and propose a new one if not
+        self.__check_subdream_size__(sub_dream_size, grace_interval)
+
+        # create sub-dreams
+        self.__create_sub_dreams__()
+
+        # run first round of checks
+        self.__run_checks_inception_mode__()
+
+        # start the dream cycle; we write between the inception data and dream data
+        with tqdm(
+            total=len(self.data_inception), desc="Processing inceptions..."
+        ) as inception_bar:
+            for inception_key, sub_dream in self.data_inception.items():
+                # tqdm add description
+                inception_bar.description = f"Processing {inception_key}..."
+
+                # write to data_dream
+                self.data_dream = sub_dream
+                # offload to device
+                self.__offload_data_to_device__()
+                # run checks
+                self.__run_checks__()
+                # go to sleep
+                if self.DEBUG:
+                    print("Passing out...")
+                self.__go_to_sleep__()
+                # write to inception data
+                self.data_inception[inception_key] = sub_dream
+
+                # update progress bar
+                inception_bar.update(1)
+
+        # cleanup tqdm
+        inception_bar.colour = "green"
+        inception_bar.close()
+
+        # write inception to dream data
+        if self.DEBUG:
+            print("Writing inception data to dream data...")
+        self.data_dream = self.__merge_dict_of_dicts__(self.data_inception)
+
+        # clear inception data
+        self.__clear_memory__(self.data_inception, "Inception", {})
+
+        # reconstruct images
+        if self.DEBUG:
+            print("Waking up...")
+        self.__post_process_data__()
+
+    def __check_subdream_size__(
+        self, sub_dream_size: int, grace_interval: float = 0.8
+    ) -> NoReturn:
+        if self.DEBUG:
+            print("Checking sub-dream size...")
+
+        # get proposed dream size
+        average_dream_size = int(
+            np.mean([self.__get_obj_size__(v) for v in self.data_dream.values()])
+        )
+        average_set_size = average_dream_size * sub_dream_size
+        GPU_memory = self.__get_gpu_memory__()
+
+        # check current dream size
+        if average_set_size < GPU_memory * grace_interval:
+            if self.DEBUG:
+                print(f"Proposed dream size {average_set_size} is within the limits.")
+            self.metadata["inception_dream_size"] = sub_dream_size
+        # suggest new dream size
+        else:
+            if self.DEBUG:
+                print(f"Proposed dream size {average_set_size} exceeds the limits.")
+            self.metadata["inception_dream_size"] = int(
+                GPU_memory * grace_interval / average_dream_size
+            )
+
+    def __create_sub_dreams__(self) -> NoReturn:
+        if self.DEBUG:
+            print("Creating sub-dreams...")
+        # Split the dreams into smaller chunks
+        self.data_inception = {
+            f"inception_{i}": sub_dict
+            for i, sub_dict in enumerate(
+                self.__split_dict_in_equal_chunks__(
+                    self.data_dream, self.metadata["inception_dream_size"]
+                )
+            )
+        }
+        # write to metadata
+        self.metadata["num_inceptions"] = len(self.data_inception)
+
+    def __sub_sample_dict__(
+        self, dict: Dict[Any, Any], sample_size: int
+    ) -> Dict[Any, Any]:
+        return {
+            k: dict[k]
+            for k in np.random.choice(
+                list(dict.keys()), size=sample_size, replace=False
+            )
+        }
+
+    def __split_dict_in_equal_chunks__(
+        self, dict: Dict[Any, Any], chunk_size: int
+    ) -> List[Dict[Any, Any]]:
+        # setup collector
+        chunks: List[List[Any]] = []
+        for i, key in enumerate(dict):
+            if i % chunk_size == 0:
+                chunks.append([key])
+            else:
+                chunks[-1].append(key)
+        return [{k: dict[k] for k in chunk} for chunk in chunks]
+
+    def __slice_dict__(self, dict: Dict[Any, Any], slice_size: int) -> Dict[Any, Any]:
+        return {k: dict[k] for k in list(dict.keys())[:slice_size]}
+
+    def __merge_dicts__(self, *args) -> Dict[Any, Any]:
+        return {k: v for d in args for k, v in d.items()}
+
+    def __merge_dict_of_dicts__(
+        self, dict_of_dicts: Dict[Any, Dict[Any, Any]]
+    ) -> Dict[Any, Any]:
+        return {k: v for d in dict_of_dicts.values() for k, v in d.items()}
+
     def __pre_process_data__(self) -> NoReturn:
         if self.DEBUG:
             print("Pre-processing data...")
@@ -340,15 +527,37 @@ class Oneiros(FileHandlerCore):
         # unpatchify images
         self.__unpatchify_imgs__()
 
+        # clear dream data
+        self.__clear_memory__(self.data_dream, "Dream", {})
+
         # apply thresholds
         self.__apply_thresholds__()
 
         # append originals
         self.__append_to_output__()
 
+        # clear input data
+        self.__clear_memory__(self.data_in, "Input", {})
+
         # cast to image
         if self.metadata["cast_all_to_img"]:
             self.__cast_all_to_img__()
+
+    def __clear_memory__(
+        self, object: Any, object_name: str, object_default: Any
+    ) -> NoReturn:
+        if self.FREEMEMORY:
+            if self.DEBUG:
+                print("Freeing up memory...")
+            if "clear" in dir(object):
+                object.clear()
+            else:
+                try:
+                    object = None
+                    object = object_default
+                except Exception as e:
+                    print(f"Error clearing {object_name} data: {e}")
+            print(f"{object_name} data cleared.")
 
     def __go_to_sleep__(self) -> NoReturn:
         with tqdm(
@@ -356,6 +565,8 @@ class Oneiros(FileHandlerCore):
             desc="Dreaming of nature...",
             file=sys.stdout,
             position=0,
+            disable=not self.VERBOSE,
+            leave=False,
         ) as pbar:
             for key, batch in self.data_dream.items():
                 with tqdm(
@@ -363,9 +574,12 @@ class Oneiros(FileHandlerCore):
                     desc=f"{key}...".capitalize(),
                     file=sys.stdout,
                     position=1,
+                    disable=not self.VERBOSE,
+                    leave=False,
                 ) as subpbar:
                     dream_memory: np.ndarray = np.zeros(
-                        self.metadata["dream_memory_shape"][key]
+                        self.metadata["dream_memory_shape"][key],
+                        dtype=self.metadata["dream_dtype"],
                     )
                     for i in range(batch.shape[0]):
                         # dreaming about nature
@@ -410,7 +624,8 @@ class Oneiros(FileHandlerCore):
                             self.num_features - (img.shape[0] - 1),  # -1 for overlay
                             img.shape[1],
                             img.shape[2],
-                        )
+                        ),
+                        dtype=img.dtype,
                     )
                     self.data_in[key] = np.insert(img, -1, pad, axis=0)
                 return
@@ -505,17 +720,22 @@ class Oneiros(FileHandlerCore):
                 ),
             )
 
+    ## TODO needs an update
     def __normalize_imgs__(self) -> NoReturn:
         if self.DEBUG:
             print("Normalizing images...")
         for key, img in self.data_dream.items():
-            self.data_dream[key] = (img - np.min(img)) / (np.max(img) - np.min(img))
+            self.data_dream[key] = (
+                (img - np.min(img)) / (np.max(img) - np.min(img))
+            ).astype(self.metadata["dream_dtype"])
 
     def __standardize_imgs__(self) -> NoReturn:
         if self.DEBUG:
             print("Standardizing images...")
         for key, img in self.data_dream.items():
-            self.data_dream[key] = (img - np.mean(img)) / np.std(img)
+            self.data_dream[key] = ((img - np.mean(img)) / np.std(img)).astype(
+                self.metadata["dream_dtype"]
+            )
 
     def __apply_transforms__(self) -> NoReturn:
         order = [self.__normalize_imgs__, self.__standardize_imgs__]
@@ -559,7 +779,7 @@ class Oneiros(FileHandlerCore):
     def __apply_static_thresholds__(self) -> NoReturn:
         if self.DEBUG:
             print("Applying thresholds...")
-        for key, dream in self.data_out.items():
+        for dream in self.data_out.values():
             for feature_key, feature in dream.items():
                 # skip overlays
                 if feature_key in ["original_overlay", "dream_overlay"] + [
@@ -575,7 +795,7 @@ class Oneiros(FileHandlerCore):
         if self.DEBUG:
             print("Applying dynamic thresholds...")
 
-        for key, dream in self.data_out.items():
+        for dream in self.data_out.values():
             for feature_key, feature in dream.items():
                 # skip overlays
                 if feature_key in ["original_overlay", "dream_overlay"] + [
@@ -593,9 +813,6 @@ class Oneiros(FileHandlerCore):
     def __generate_dynamic_thresholds__(
         self, feature: np.ndarray
     ) -> Tuple[float, float]:
-        if self.DEBUG:
-            print("Generating dynamic thresholds...")
-
         try:
             # get histogram
             counts, bins = np.histogram(feature.ravel(), bins=100)
@@ -645,11 +862,11 @@ class Oneiros(FileHandlerCore):
             print("Appending original overlays...")
 
         if self.mode == "has_ground_truth":
-            for key, dream in self.data_out.items():
+            for key in self.data_out.keys():
                 self.data_out[key].update({"original_overlay": self.data_in[key][-1]})
 
         elif self.mode == "no_ground_truth":
-            for key, dream in self.data_out.items():
+            for key in self.data_out.keys():
                 self.data_out[key].update({"original_overlay": self.data_in[key]})
 
     def __append_original_features__(self) -> NoReturn:
@@ -658,7 +875,7 @@ class Oneiros(FileHandlerCore):
 
         # fail catch
         if self.mode == "has_ground_truth":
-            for key, dream in self.data_out.items():
+            for key in self.data_out.keys():
                 for i in range(0, self.num_features):
                     self.data_out[key].update(
                         {f"original_feature_{i}": self.data_in[key][i]}
@@ -721,6 +938,53 @@ class Oneiros(FileHandlerCore):
 
     def __num_dreams__(self) -> int:
         return len(self.data_in.keys())
+
+    def __get_gpu_memory__(self) -> int:
+        """
+        Get the current free GPU memory in bytes.
+        """
+        command = "nvidia-smi --query-gpu=memory.free --format=csv"
+        memory_free_info = (
+            sp.check_output(command.split()).decode("ascii").split("\n")[:-1][1:]
+        )
+        memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
+        return max(memory_free_values) * 1e6
+
+    def __get_obj_size__(self, obj: object) -> int:
+        """Get the size of an object in bytes.
+
+        Args:
+            obj (object): The object to measure.
+
+        Returns:
+            int: The size of the object in bytes.
+        """
+        marked = {id(obj)}
+        obj_q = [obj]
+        sz = 0
+
+        while obj_q:
+            sz += sum(map(sys.getsizeof, obj_q))
+
+            # Lookup all the object referred to by the object in obj_q.
+            # See: https://docs.python.org/3.7/library/gc.html#gc.get_referents
+            all_refr = ((id(o), o) for o in gc.get_referents(*obj_q))
+
+            # Filter object that are already marked.
+            # Using dict notation will prevent repeated objects.
+            new_refr = {
+                o_id: o
+                for o_id, o in all_refr
+                if o_id not in marked and not isinstance(o, type)
+            }
+
+            # The new obj_q will be the ones that were not marked,
+            # and we will update marked with their ids so we will
+            # not traverse them again.
+            obj_q = new_refr.values()
+            marked.update(new_refr.keys())
+
+        return sz
 
     # %% Convenience Functions
     def change_mode(self, mode: str) -> NoReturn:
@@ -1014,6 +1278,19 @@ class Oneiros(FileHandlerCore):
             print(f"Error: {e}")
             return
 
+    def __run_checks_inception_mode__(self) -> NoReturn:
+        if self.DEBUG:
+            print("Running inception mode checks...")
+        try:
+            assert self.__check_model__()
+            assert self.__check_data_in__()
+            assert self.__check_data_inception__()
+            assert self.__check_dream_memory__()
+            assert self.__check_patch_array_shape__()
+            assert self.__check_num_features__()
+        except Exception as e:
+            print(f"Error: {e}")
+
     def __check_model__(self) -> bool:
         if self.DEBUG:
             print("Checking model...")
@@ -1034,6 +1311,16 @@ class Oneiros(FileHandlerCore):
         if self.DEBUG:
             print("Checking data...")
         if len(self.data_dream) == 0:
+            print(
+                "Error: Data not processed. Please process the data before proceeding."
+            )
+            return False
+        return True
+
+    def __check_data_inception__(self) -> bool:
+        if self.DEBUG:
+            print("Checking data...")
+        if len(self.data_inception) == 0:
             print(
                 "Error: Data not processed. Please process the data before proceeding."
             )
@@ -1088,7 +1375,7 @@ class Oneiros(FileHandlerCore):
                 for key, dream in self.data_out.items():
                     assert (len(dream) - 1) == self.num_features
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"Number of features mismatch. Expected {self.num_features}, but got {len(dream) - 1}.")
                 return False
         return True
 
@@ -1103,7 +1390,7 @@ class Oneiros(FileHandlerCore):
     def __check_needs_channel_padding__(self) -> bool:
         if self.DEBUG:
             print("Checking channel padding...")
-        for key, img in self.data_in.items():
-            if img.shape[1] != self.num_features:
+        for img in self.data_in.values():
+            if img.shape[0] - 1 != self.num_features:  # -1 for the overlay
                 return True
         return False
