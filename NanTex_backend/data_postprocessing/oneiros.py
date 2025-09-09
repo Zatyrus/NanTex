@@ -1374,8 +1374,10 @@ class Oneiros(FileHandlerCore):
             try:
                 for key, dream in self.data_out.items():
                     assert (len(dream) - 1) == self.num_features
-            except Exception as e:
-                print(f"Number of features mismatch. Expected {self.num_features}, but got {len(dream) - 1}.")
+            except Exception:
+                print(
+                    f"Number of features mismatch. Expected {self.num_features}, but got {len(dream) - 1}."
+                )
                 return False
         return True
 
