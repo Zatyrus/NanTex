@@ -33,7 +33,7 @@ class OVERLAY_HELPER:
     @staticmethod
     def __standardize_img__(img:np.ndarray, perform_standardization:bool) -> np.ndarray:
         if perform_standardization:
-            return ((img - np.mean(img)) / np.std(img))
+            return (img - np.mean(img)) / np.std(img)
         return img
 
     @staticmethod
@@ -58,7 +58,7 @@ class OVERLAY_HELPER:
                 
     @staticmethod
     def __ignore_flags__() -> List[str]:
-        return ["dtype_out", "rotation", "perform_standardization", "augmentation", "patches", "patch_content_ratio"]
+        return ["dtype_out", "rotation", "perform_standardization", "augmentation", "patches", "patch_content_ratio", "show_pbar"]
 
     # %% Overlay Generation
     @staticmethod
@@ -114,13 +114,27 @@ class OVERLAY_HELPER:
     
     @staticmethod
     def __generate_patches__(punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]], overlay_worker: Callable) -> Dict[int,np.ndarray]:
+        # Override disable auto-standardization for patch generation, because we need to apply it to the patches individually
+        backup_perform_standardization = punchcard["perform_standardization"]
+        punchcard["perform_standardization"] = False
+        
         # generate base overlay (e.g. __generate_stack__)
         tmp = overlay_worker(punchcard=punchcard, data_in=data_in)
         img = tmp[-1,:,:] # <- overlay is always the last image in the stack
         masks = list(tmp[:-1,:,:]) # <- all other images are masks
+        
+        # restore perform_standardization flag
+        punchcard["perform_standardization"] = backup_perform_standardization
 
         # generate patches
         patch_collector: Dict[int,np.ndarray] = {i:None for i in range(punchcard["patches"])}
+        
+        # open pbar
+        if punchcard["show_pbar"]:
+            patch_pbar = tqdm(total=punchcard["patches"], desc="Generating Patches...", file=sys.stdout, leave = False, miniters = 0)
+        else:
+            patch_pbar = None
+        
         while any(v is None for v in patch_collector.values()):
 
             # extract patch
@@ -135,9 +149,19 @@ class OVERLAY_HELPER:
             # find empty patch
             for i, patch in patch_collector.items():
                 if patch is None:
-                    patch_collector[i] = np.stack([*augmented_masks, augmented_img], axis=0)
+                    # standardize the overlay patch and summarize to stack
+                    patch_collector[i] = np.stack([*augmented_masks, OVERLAY_HELPER.__standardize_img__(augmented_img, punchcard['perform_standardization'])], axis=0)
                     break
-                
+            
+            # update pbar
+            if patch_pbar:
+                patch_pbar.update(1)
+            
+        # close pbar
+        if patch_pbar:
+            patch_pbar.colour = "green"
+            patch_pbar.close()
+        
         return patch_collector
 
     @staticmethod
@@ -203,7 +227,7 @@ class OVERLAY_HELPER:
     
     @staticmethod
     @ray.remote(num_returns=1)
-    def __multi_core_worker_generate_patch_overlay__(
+    def __multi_core_worker_generate_patch_rotation__(
         punchcard: Dict[str, Tuple[int, int]],
         data_in: Dict[str, List[np.ndarray]],
         data_path_out: str,
@@ -211,7 +235,7 @@ class OVERLAY_HELPER:
         # read punchcard
         key, punchcard = list(punchcard.items())[0]
         OVERLAY_HELPER.__save_patch_stack__(
-            patch_collector=OVERLAY_HELPER.__generate_patch_overlay__(
+            patch_collector=OVERLAY_HELPER.__generate_patch_rotation__(
                 punchcard=punchcard, data_in=data_in
             ),
             data_path_out=data_path_out,
@@ -237,10 +261,12 @@ class OverlayGenerator(FileHandlerCore):
     multi_core: bool
     sleeptime: float
     dtype_out: np.dtype
+    dtype_in: np.dtype
     metadata: Dict[str, Any]
     augmentation_pipeline: A.Compose
     DEBUG: bool
     disable_auto_standardization: bool
+    disable_patch_pbar: bool
     patch_content_ratio: float
 
     cluster_context: Optional[Any]  # ray cluster context
@@ -328,6 +354,15 @@ class OverlayGenerator(FileHandlerCore):
         self._update_metadata("dtype_out", value)
         
     @property
+    def dtype_in(self):
+        return self._dtype_in
+    
+    @dtype_in.setter
+    def dtype_in(self, value):
+        self._dtype_in = value
+        self._update_metadata("dtype_in", value)
+        
+    @property
     def patch_content_ratio(self):
         return self._patch_content_ratio
     @patch_content_ratio.setter
@@ -343,6 +378,14 @@ class OverlayGenerator(FileHandlerCore):
         self._disable_auto_standardization = value
         self._update_metadata("disable_auto_standardization", value)
         
+    @property
+    def disable_patch_pbar(self):
+        return self._disable_patch_pbar
+    @disable_patch_pbar.setter
+    def disable_patch_pbar(self, value):
+        self._disable_patch_pbar = value
+        self._update_metadata("disable_patch_pbar", value)
+
     @property
     def augmentation_pipeline(self):
         return self._augmentation_pipeline
@@ -382,7 +425,7 @@ class OverlayGenerator(FileHandlerCore):
         self._multi_core = multi_core
 
         # handle sleep time
-        self._sleeptime = 0.0
+        self._sleeptime = 0.1
         if "sleeptime" in kwargs:
             self._sleeptime = kwargs["sleeptime"]
 
@@ -404,6 +447,13 @@ class OverlayGenerator(FileHandlerCore):
             if self._DEBUG:
                 print("User input detected. Overriding output dtype.")
             self._dtype_out = kwargs["dtype_out"]
+            
+        # handle dtype_in
+        self._dtype_in = np.uint8 # default input dtype for most images
+        if "dtype_in" in kwargs:
+            if self._DEBUG:
+                print("User input detected. Setting input dtype.")
+            self._dtype_in = kwargs["dtype_in"]
 
         # handle augmentation pipeline
         self._augmentation_pipeline = None
@@ -425,8 +475,15 @@ class OverlayGenerator(FileHandlerCore):
                 print("User input detected. Overriding auto-standardization setting.")
             self._disable_auto_standardization = kwargs["disable_auto_standardization"]
             
+        # handle disable patch pbar
+        self._disable_patch_pbar = False
+        if "disable_patch_pbar" in kwargs:
+            if self._DEBUG:
+                print("User input detected. Overriding patch pbar setting.")
+            self._disable_patch_pbar = kwargs["disable_patch_pbar"]
+            
         # handle patch content grace interval
-        self._patch_content_ratio = 0.0
+        self._patch_content_ratio = 0.10 # default 10% of patch must contain information
         if "patch_content_ratio" in kwargs:
             self._patch_content_ratio = kwargs["patch_content_ratio"]
 
@@ -441,6 +498,12 @@ class OverlayGenerator(FileHandlerCore):
         
         # Call from parent class
         self.__post_init__()
+
+    # post init routine
+    def __post_init__(self):
+        super().__post_init__()
+        self.__check_input_dtype_on_startup__() # <- check if the input dtype is supported and if it matches the input images
+        
 
     # %% classmethods
     @classmethod
@@ -512,6 +575,9 @@ class OverlayGenerator(FileHandlerCore):
                     print("Initializing augmentation pipeline...")
                 self.__setup_patch_pipeline_with_augmentation__()
                 self.__generate_punchcard_patch_augmentation__()
+                
+        # add behavioral flags
+        self.__update_patch_pbar_instructions__()
 
     def generate_overlay(
         self
@@ -619,12 +685,25 @@ class OverlayGenerator(FileHandlerCore):
                  "patches": self._patches,
                  "patch_content_ratio": self._patch_content_ratio}
             )
+            
+    def __update_patch_pbar_instructions__(self) -> NoReturn:
+        # will be triggered after punchcard generation, so we can directly reference the punchcards stored in self.data_punchcards
+        if self._patches and not self._multi_core:
+            for punchcard in self.data_punchcards:
+                self.data_punchcards[punchcard].update(
+                    {"show_pbar": not self._disable_patch_pbar}
+                )
+        elif self._patches and self._multi_core:
+            for punchcard in self.data_punchcards:
+                self.data_punchcards[punchcard].update(
+                    {"show_pbar": False}
+                )
 
     # %% Single Core Execution
     def __single_core_main__(self, stack_generation: Callable, desc: str) -> NoReturn:
         if self.patches:
             with tqdm(
-                total=len(self.data_punchcards.keys()), desc=desc, file=sys.stdout
+                total=len(self.data_punchcards.keys()), desc=desc, file=sys.stdout, miniters = 0
             ) as pbar:
                 # iterate over punchcards
                 for key, punchcard in self.data_punchcards.items():
@@ -642,7 +721,7 @@ class OverlayGenerator(FileHandlerCore):
         
         else:
             with tqdm(
-                total=len(self.data_punchcards.keys()), desc=desc, file=sys.stdout
+                total=len(self.data_punchcards.keys()), desc=desc, file=sys.stdout, miniters = 0
             ) as pbar:
                 # iterate over punchcards
                 for key, punchcard in self.data_punchcards.items():
@@ -751,7 +830,7 @@ class OverlayGenerator(FileHandlerCore):
                     data_path_out=data_path_out_ref,
                 )
                 for punchcard in tqdm(
-                    punchcard_refs, desc="Scheduling Workers", position=0
+                    punchcard_refs, desc="Scheduling Workers", position=0, miniters = 0
                 )
             ],
             total=len(punchcard_refs)
@@ -776,24 +855,20 @@ class OverlayGenerator(FileHandlerCore):
         if self._mode == "overlay":
             if self._patches:
                 self.__multi_core_main__(
-                    worker=OVERLAY_HELPER.__multi_core_worker_generate_patch_overlay__,
-                    sleep_time=self.metadata["sleeptime"],
+                    worker=OVERLAY_HELPER.__multi_core_worker_generate_patch_overlay__
                 )
             else:
                 self.__multi_core_main__(
-                    worker=OVERLAY_HELPER.__multi_core_worker_generate_stack__,
-                    sleep_time=self.metadata["sleeptime"],
+                    worker=OVERLAY_HELPER.__multi_core_worker_generate_stack__
                 )
         elif self._mode == "rotation":
             if self._patches:
                 self.__multi_core_main__(
-                    worker=OVERLAY_HELPER.__multi_core_worker_generate_patch_rotation__,
-                    sleep_time=self.metadata["sleeptime"],
+                    worker=OVERLAY_HELPER.__multi_core_worker_generate_patch_rotation__
                 )
             else:
                 self.__multi_core_main__(
-                    worker=OVERLAY_HELPER.__multi_core_worker_generate_stack_rotation__,
-                    sleep_time=self.metadata["sleeptime"],
+                    worker=OVERLAY_HELPER.__multi_core_worker_generate_stack_rotation__
                 )
         else:
             warnings.warn("Mode not supported yet...")
@@ -801,6 +876,11 @@ class OverlayGenerator(FileHandlerCore):
     # %% Helper Functions
     def __pad_img__(
         self, img: np.ndarray, y_lim: int, x_lim: int) -> np.ndarray:
+        # override limits if imagesize is set
+        if self._imagesize:
+            y_lim = max(y_lim, self._imagesize[0]+1)
+            x_lim = max(x_lim, self._imagesize[1]+1)
+
         # determine padding
         y_pad = max(0, int(np.round((y_lim - img.shape[0]) / 2)))
         x_pad = max(0, int(np.round((x_lim - img.shape[1]) / 2)))
@@ -885,6 +965,8 @@ class OverlayGenerator(FileHandlerCore):
         else:
             # check the type and compose if necessary
             if type(self._augmentation_pipeline) is not A.Compose:
+                if self._DEBUG:
+                    print("Augmentation pipeline provided uncomposed, composing now...")
                 if self.__is_iterable__(self._augmentation_pipeline):
                     if self._DEBUG:
                         print("Composing augmentation pipeline from iterable...")
@@ -899,11 +981,37 @@ class OverlayGenerator(FileHandlerCore):
                 if not any(
                     isinstance(t, A.RandomCrop) for t in self._augmentation_pipeline.transforms
                 ):
-                    self._augmentation_pipeline.transforms.insert(0, A.RandomCrop(height=self._patchsize[0], width=self._patchsize[1]))
-                    
                     if self._DEBUG:
                         print("RandomCrop not found in augmentation pipeline, adding it as the first transform...")
+                    self._augmentation_pipeline.transforms.insert(0, A.RandomCrop(height=self._patchsize[0], width=self._patchsize[1]))
 
+    def __cast_to_dtype__(self, img: np.ndarray, dtype: np.dtype) -> np.ndarray:
+        if img.dtype == dtype:
+            if self._DEBUG:
+                print(f"Type casting called unnecessarily. Image already of type {dtype}. Skipping...")
+            return img
+
+        if self._DEBUG:
+            print(f"Casting image to {dtype}...")
+        if np.issubdtype(img.dtype, np.floating) and np.issubdtype(dtype, np.integer):
+            # float to int
+            warnings.warn("Casting from float to int may lead to data loss. "
+                          "Automatic normalization applied. Scaling to full range of target dtype.")
+            info = np.iinfo(dtype)
+            # normalize img first
+            img = (img - np.min(img)) / (np.max(img) - np.min(img))  # normalize to [0,1]
+            img = img * (info.max - info.min) + info.min  # scale to [min,max] of target dtype
+            return img.astype(dtype)
+        elif np.issubdtype(img.dtype, np.integer) and np.issubdtype(dtype, np.floating):
+            pass  # int to float, no normalization needed, leaving the hook for later           
+        return img.astype(dtype)
+    
+    def __cast_to_expected_output_dtype__(self, img: np.ndarray) -> np.ndarray:
+        return self.__cast_to_dtype__(img=img, dtype=self._dtype_out)
+    
+    def __cast_to_expected_input_dtype__(self, img: np.ndarray) -> np.ndarray:
+        return self.__cast_to_dtype__(img=img, dtype=self._dtype_in)
+    
     # %% Ray 
     def __listen_to_ray_progress__(
         self,
@@ -913,18 +1021,22 @@ class OverlayGenerator(FileHandlerCore):
         if self._DEBUG:
             print("Setting up progress monitors...")
         ## create progress monitors
-        msd_progress = tqdm(total=total, desc="Workers", position=1)
+        ray_progress = tqdm(total=total, desc="Workers", position=1, miniters = 0)
         cpu_progress = tqdm(
             total=100,
             desc="CPU usage",
             bar_format="{desc}: {percentage:3.0f}%|{bar}|",
             position=2,
+            miniters=0,
+            mininterval=self._sleeptime
         )
         mem_progress = tqdm(
             total=psutil.virtual_memory().total,
             desc="RAM usage",
             bar_format="{desc}: {percentage:3.0f}%|{bar}|",
             position=3,
+            miniters=0,
+            mininterval=self._sleeptime
         )
 
         finished_states = []
@@ -948,28 +1060,25 @@ class OverlayGenerator(FileHandlerCore):
                 cpu_progress.refresh()
 
                 # update the progress bar
-                msd_progress.n = len(finished_states)
-                msd_progress.refresh()
-
-                # sleep for a bit
-                time.sleep(self.metadata["sleeptime"])
+                ray_progress.n = len(finished_states)
+                ray_progress.refresh()
 
             except KeyboardInterrupt:
                 print("Interrupted")
                 break
 
         # set the progress bars to success
-        msd_progress.colour = "green"
+        ray_progress.colour = "green"
         cpu_progress.colour = "green"
         mem_progress.colour = "green"
 
         # set the progress bars to their final values
-        msd_progress.n = total
+        ray_progress.n = total
         cpu_progress.n = 0
         mem_progress.n = 0
 
         # close the progress bars
-        msd_progress.close()
+        ray_progress.close()
         cpu_progress.close()
         mem_progress.close()
 
@@ -1030,7 +1139,8 @@ class OverlayGenerator(FileHandlerCore):
         self.metadata = {
             "x_lim": self.get_x_lim(),
             "y_lim": self.get_y_lim(),
-            "dtype_out": self._dtype_out, # a bit hefty in storage, but worth the cost in memory
+            "dtype_out": self._dtype_out,
+            "dtype_in": self._dtype_in,
             "mode": self._mode,
             "multi_core": self._multi_core,
             "patches": self._patches,
@@ -1040,6 +1150,7 @@ class OverlayGenerator(FileHandlerCore):
             "DEBUG": self._DEBUG,
             "sleeptime": self._sleeptime,
             "patch_content_ratio": self._patch_content_ratio,
+            "disable_patch_pbar": self._disable_patch_pbar,
             "disable_auto_standardization": self._disable_auto_standardization,
         }
 
@@ -1057,6 +1168,9 @@ class OverlayGenerator(FileHandlerCore):
         startup_check = self.__startup_check__()
         if startup_check is not True:
             raise ValueError(f"Startup check failed: {startup_check}")
+
+        # check input dtype
+        self.__check_input_dtype_on_runtime__()  # <- img is not used in the function, hence we pass None
 
         # check expected output type
         self.__check_expected_output__()
@@ -1098,3 +1212,46 @@ class OverlayGenerator(FileHandlerCore):
             if self._dtype_out in {np.uint8, np.uint16, 'uint8', 'uint16'}:
                 warnings.warn("Auto-standardization enabled while output dtype is uint8 or uint16. Disabling auto-standardization to prevent unexpected results.")
                 self._disable_auto_standardization = True
+                
+    def __check_input_dtype_on_startup__(self) -> NoReturn:
+        if self._DEBUG:
+            print("Checking input dtype...")
+        
+        # check if input dtype is supported
+        assert self._dtype_in in {np.uint8, np.uint16, np.float32, np.float64, 'uint8', 'uint16', 'float32', 'float64'}, "Unsupported input dtype. Please choose from uint8, uint16, float32, float64."
+            
+        # collect dtype of input
+        input_dtypes = {f"{feature_key}_{i}": img.dtype for feature_key, imgs in self.data_in.items() for i, img in enumerate(imgs)}
+        present_dtypes = set(input_dtypes.values())
+        if len(present_dtypes) > 1:
+            warnings.warn(f"Multiple input dtypes found: {set(input_dtypes.values())}. Consider standardizing input dtypes.")
+            # collect present dtypes and return the keys to them
+            user_info = {dtype: [key for key, dt in input_dtypes.items() if dt == dtype] for dtype in present_dtypes}
+            for dtype, keys in user_info.items():
+                print(f" - dtype {dtype}: {keys}")
+        else:
+            input_dtype = present_dtypes.pop()
+            if input_dtype != self._dtype_in:
+                print(f"Input dtype ({input_dtype}) does not match expected dtype ({self._dtype_in}). Check your input data.")
+                print(f"Overriding input dtype from {self._dtype_in} to {input_dtype}.")
+                self.dtype_in = input_dtype
+            else:
+                if self._DEBUG:
+                    print(f"Input dtype ({input_dtype}) matches expected dtype ({self._dtype_in}).")
+                    
+    def __check_input_dtype_on_runtime__(self) -> NoReturn:
+        if self._DEBUG:
+            print("Checking input dtype at runtime...")
+        # iterate over collector and check dtypes, cast if required
+        if not any(img.dtype != self._dtype_in for value in self.data_in.values() for img in value):
+            if self._DEBUG:
+                print("All input dtypes match expected dtype.")  
+        else:  
+            for key, value in self.data_in.items():
+                if any(img.dtype != self._dtype_in for img in value):
+                    if self._DEBUG:
+                        print(f"Input dtype mismatch found in feature '{key}'. Casting to expected dtype '{self._dtype_in}'...")
+                    self.data_in[key] = [self.__cast_to_expected_input_dtype__(img=img) for img in value]
+            
+        # Check input dtype after casting
+        self.__check_input_dtype_on_startup__()
