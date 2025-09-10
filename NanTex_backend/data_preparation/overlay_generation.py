@@ -25,272 +25,7 @@ except:
 # Custom Dependencies
 from ..Util.pyDialogue import pyDialogue as pD
 from ..Util.file_handler_core import FileHandlerCore
-
-
-class OVERLAY_HELPER:
-    # %% Helper
-    @staticmethod
-    def __standardize_img__(
-        img: np.ndarray, perform_standardization: bool
-    ) -> np.ndarray:
-        if perform_standardization:
-            return (img - np.mean(img)) / np.std(img)
-        return img
-
-    @staticmethod
-    def __cast_output_to_dtype__(arr: np.ndarray, dtype: Type[np.number]) -> np.ndarray:
-        return arr.astype(dtype)
-
-    @staticmethod
-    def __check_img_content__(img: np.ndarray, content_ratio: float) -> bool:
-        # check how many pixels are non-zero, i.e. contain information
-        if content_ratio == 0.0:
-            return True
-        elif content_ratio < 0:
-            raise ValueError("Content ratio must be non-negative")
-        content = np.count_nonzero(img) / img.size
-        return content >= content_ratio
-
-    @staticmethod
-    def __save_patch_stack__(
-        patch_collector: Dict[int, np.ndarray], data_path_out: str, key: str
-    ) -> None:
-        for i, patch in patch_collector.items():
-            if patch is not None:
-                np.save(f"{data_path_out}/{key}_patch_{i}.npy", patch)
-
-    @staticmethod
-    def __ignore_flags__() -> List[str]:
-        return [
-            "dtype_out",
-            "rotation",
-            "perform_standardization",
-            "augmentation",
-            "patches",
-            "patch_content_ratio",
-            "show_pbar",
-        ]
-
-    # %% Overlay Generation
-    @staticmethod
-    def __overlay__(img_list: List[np.ndarray]) -> np.ndarray:
-        return np.sum(img_list, axis=0)
-
-    @staticmethod
-    def __generate_stack__(
-        punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
-    ) -> NoReturn:
-        # collect imgs
-        out: List
-        out = [
-            data_in[key][value]
-            for key, value in punchcard.items()
-            if key not in OVERLAY_HELPER.__ignore_flags__()
-        ]
-
-        # overlay imgs
-        out.append(
-            OVERLAY_HELPER.__cast_output_to_dtype__(
-                OVERLAY_HELPER.__standardize_img__(
-                    OVERLAY_HELPER.__overlay__(out),
-                    punchcard["perform_standardization"],
-                ),
-                punchcard["dtype_out"],
-            )
-        )
-        return np.stack(out, axis=0)
-
-    @staticmethod
-    def __generate_stack_rotation__(
-        punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
-    ) -> NoReturn:
-        # collect imgs
-        out: List
-        out = [
-            data_in[key][value]
-            for key, value in punchcard.items()
-            if key not in OVERLAY_HELPER.__ignore_flags__()
-        ]
-
-        # rotate imgs
-        out = [np.rot90(img, k=punchcard["rotation"][i]) for i, img in enumerate(out)]
-
-        # overlay imgs
-        out.append(
-            OVERLAY_HELPER.__cast_output_to_dtype__(
-                OVERLAY_HELPER.__standardize_img__(
-                    OVERLAY_HELPER.__overlay__(out),
-                    punchcard["perform_standardization"],
-                ),
-                punchcard["dtype_out"],
-            )
-        )
-        return np.stack(out, axis=0)
-
-    @staticmethod
-    def __generate_patches__(
-        punchcard: Dict[str, Tuple[int, int]],
-        data_in: Dict[str, List[np.ndarray]],
-        overlay_worker: Callable,
-    ) -> Dict[int, np.ndarray]:
-        # Override disable auto-standardization for patch generation, because we need to apply it to the patches individually
-        backup_perform_standardization = punchcard["perform_standardization"]
-        punchcard["perform_standardization"] = False
-
-        # generate base overlay (e.g. __generate_stack__)
-        tmp = overlay_worker(punchcard=punchcard, data_in=data_in)
-        img = tmp[-1, :, :]  # <- overlay is always the last image in the stack
-        masks = list(tmp[:-1, :, :])  # <- all other images are masks
-
-        # restore perform_standardization flag
-        punchcard["perform_standardization"] = backup_perform_standardization
-
-        # generate patches
-        patch_collector: Dict[int, np.ndarray] = {
-            i: None for i in range(punchcard["patches"])
-        }
-
-        # open pbar
-        if punchcard["show_pbar"]:
-            patch_pbar = tqdm(
-                total=punchcard["patches"],
-                desc="Generating Patches...",
-                file=sys.stdout,
-                leave=False,
-                miniters=0,
-            )
-        else:
-            patch_pbar = None
-
-        while any(v is None for v in patch_collector.values()):
-            # extract patch
-            augmented = punchcard["augmentation"](image=img, masks=masks)
-            augmented_img = augmented["image"]
-            augmented_masks = augmented["masks"]
-
-            # check for content
-            if not OVERLAY_HELPER.__check_img_content__(
-                augmented_img, punchcard["patch_content_ratio"]
-            ):
-                continue
-
-            # find empty patch
-            for i, patch in patch_collector.items():
-                if patch is None:
-                    # standardize the overlay patch and summarize to stack
-                    patch_collector[i] = np.stack(
-                        [
-                            *augmented_masks,
-                            OVERLAY_HELPER.__standardize_img__(
-                                augmented_img, punchcard["perform_standardization"]
-                            ),
-                        ],
-                        axis=0,
-                    )
-                    break
-
-            # update pbar
-            if patch_pbar:
-                patch_pbar.update(1)
-
-        # close pbar
-        if patch_pbar:
-            patch_pbar.colour = "green"
-            patch_pbar.close()
-
-        return patch_collector
-
-    @staticmethod
-    def __generate_patch_overlay__(
-        punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
-    ) -> NoReturn:
-        return OVERLAY_HELPER.__generate_patches__(
-            punchcard=punchcard,
-            data_in=data_in,
-            overlay_worker=OVERLAY_HELPER.__generate_stack__,
-        )
-
-    @staticmethod
-    def __generate_patch_rotation__(
-        punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
-    ) -> NoReturn:
-        return OVERLAY_HELPER.__generate_patches__(
-            punchcard=punchcard,
-            data_in=data_in,
-            overlay_worker=OVERLAY_HELPER.__generate_stack_rotation__,
-        )
-
-    @staticmethod
-    @ray.remote(num_returns=1)
-    def __multi_core_worker_generate_stack__(
-        punchcard: Dict[str, Tuple[int, int]],
-        data_in: Dict[str, List[np.ndarray]],
-        data_path_out: str,
-    ) -> str:
-        # read punchcard
-        key, punchcard = list(punchcard.items())[0]
-        np.save(
-            f"{data_path_out}/{key}.npy",
-            OVERLAY_HELPER.__generate_stack__(punchcard=punchcard, data_in=data_in),
-        )
-
-        return key
-
-    @staticmethod
-    @ray.remote(num_returns=1)
-    def __multi_core_worker_generate_stack_rotation__(
-        punchcard: Dict[str, Tuple[int, int]],
-        data_in: Dict[str, List[np.ndarray]],
-        data_path_out: str,
-    ) -> str:
-        # read punchcard
-        key, punchcard = list(punchcard.items())[0]
-        np.save(
-            f"{data_path_out}/{key}.npy",
-            OVERLAY_HELPER.__generate_stack_rotation__(
-                punchcard=punchcard, data_in=data_in
-            ),
-        )
-
-        return key
-
-    @staticmethod
-    @ray.remote(num_returns=1)
-    def __multi_core_worker_generate_patch_overlay__(
-        punchcard: Dict[str, Tuple[int, int]],
-        data_in: Dict[str, List[np.ndarray]],
-        data_path_out: str,
-    ) -> str:
-        # read punchcard
-        key, punchcard = list(punchcard.items())[0]
-        OVERLAY_HELPER.__save_patch_stack__(
-            patch_collector=OVERLAY_HELPER.__generate_patch_overlay__(
-                punchcard=punchcard, data_in=data_in
-            ),
-            data_path_out=data_path_out,
-            key=key,
-        )
-
-        return key
-
-    @staticmethod
-    @ray.remote(num_returns=1)
-    def __multi_core_worker_generate_patch_rotation__(
-        punchcard: Dict[str, Tuple[int, int]],
-        data_in: Dict[str, List[np.ndarray]],
-        data_path_out: str,
-    ) -> str:
-        # read punchcard
-        key, punchcard = list(punchcard.items())[0]
-        OVERLAY_HELPER.__save_patch_stack__(
-            patch_collector=OVERLAY_HELPER.__generate_patch_rotation__(
-                punchcard=punchcard, data_in=data_in
-            ),
-            data_path_out=data_path_out,
-            key=key,
-        )
-
-        return key
+from ..Util.overlay_helper import OVERLAY_HELPER
 
 
 class OverlayGenerator(FileHandlerCore):
@@ -306,6 +41,7 @@ class OverlayGenerator(FileHandlerCore):
     patches: int
     patchsize: Tuple[int, int]
     imagesize: Tuple[int, int]
+    max_input_dimensions: Tuple[int, int]
     multi_core: bool
     sleeptime: float
     dtype_out: np.dtype
@@ -326,6 +62,8 @@ class OverlayGenerator(FileHandlerCore):
 
     @mode.setter
     def mode(self, value):
+        if value not in ["overlay", "rotation"]:
+            raise ValueError("Mode not supported yet. Please choose 'overlay' or 'rotation'.")
         self._mode = value
         self._update_metadata("mode", value)
 
@@ -364,6 +102,15 @@ class OverlayGenerator(FileHandlerCore):
     def imagesize(self, value):
         self._imagesize = value
         self._update_metadata("imagesize", value)
+        
+    @property
+    def max_input_dimensions(self):
+        return self._max_input_dimensions
+    
+    @max_input_dimensions.setter
+    def max_input_dimensions(self, value):
+        self._max_input_dimensions = value
+        self._update_metadata("max_input_dimensions", value)
 
     @property
     def multi_core(self):
@@ -474,6 +221,7 @@ class OverlayGenerator(FileHandlerCore):
         self._patchsize = patchsize
         self._imagesize = imagesize
         self._multi_core = multi_core
+        self._max_input_dimensions = (0, 0)  # will be updated after loading input images
 
         # handle sleep time
         self._sleeptime = 0.1
@@ -558,6 +306,7 @@ class OverlayGenerator(FileHandlerCore):
     def __post_init__(self):
         super().__post_init__()
         self.__check_input_dtype_on_startup__()  # <- check if the input dtype is supported and if it matches the input images
+        self.get_max_input_dimensions()  # <- get max span of input images
 
     # %% classmethods
     @classmethod
@@ -940,11 +689,11 @@ class OverlayGenerator(FileHandlerCore):
             warnings.warn("Mode not supported yet...")
 
     # %% Helper Functions
-    def __pad_img__(self, img: np.ndarray, y_lim: int, x_lim: int) -> np.ndarray:
+    def __pad_img__(self, img: np.ndarray) -> np.ndarray:
         # override limits if imagesize is set
         if self._imagesize:
-            y_lim = max(y_lim, self._imagesize[0] + 1)
-            x_lim = max(x_lim, self._imagesize[1] + 1)
+            y_lim = max(self._max_input_dimensions[0], self._imagesize[0] + 1)
+            x_lim = max(self._max_input_dimensions[1], self._imagesize[1] + 1)
 
         # determine padding
         y_pad = max(0, int(np.round((y_lim - img.shape[0]) / 2)))
@@ -1009,6 +758,18 @@ class OverlayGenerator(FileHandlerCore):
 
     def get_y_lim(self) -> int:
         return max([img.shape[0] for img in sum(list(self.data_in.values()), [])])
+    
+    def get_max_input_dimensions(self) -> Tuple[int, int]:
+        if self._DEBUG:
+            print("Calculating max input dimensions...")
+        # separate rotation and overlay modes
+        if self._mode == "overlay":
+            self.max_input_dimensions = (self.get_y_lim(), self.get_x_lim())
+        elif self._mode == "rotation":
+            self.max_input_dimensions = (
+                max(self.get_y_lim(), self.get_x_lim()), # <- we need to account for 90 and 270 degree rotations
+                max(self.get_y_lim(), self.get_x_lim()),
+            )
 
     def __setup_patch_pipeline_no_augmentation__(self) -> NoReturn:
         if self._DEBUG:
@@ -1210,7 +971,7 @@ class OverlayGenerator(FileHandlerCore):
         for key, value in self.data_in.items():
             self.data_in[key] = [
                 self.__pad_img__(
-                    img=img, y_lim=self.metadata["y_lim"], x_lim=self.metadata["x_lim"]
+                    img=img
                 )
                 for img in value
             ]
@@ -1226,8 +987,7 @@ class OverlayGenerator(FileHandlerCore):
         if self._DEBUG:
             print("Setting up metadata...")
         self.metadata = {
-            "x_lim": self.get_x_lim(),
-            "y_lim": self.get_y_lim(),
+            "max_input_dimensions": self._max_input_dimensions,
             "dtype_out": self._dtype_out,
             "dtype_in": self._dtype_in,
             "mode": self._mode,
@@ -1269,6 +1029,9 @@ class OverlayGenerator(FileHandlerCore):
 
         # handle disable_auto_standardization warnings
         self.__handle_disable_auto_standardization__()
+        
+        # get max input dimensions
+        self.get_max_input_dimensions()
 
     def __startup_check__(self) -> Union[bool, str]:
         if self._DEBUG:
