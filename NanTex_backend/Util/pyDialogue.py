@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import filedialog
 import os
 
-
 class pyDialogue:
     def __init__(self):
         pass

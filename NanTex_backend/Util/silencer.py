@@ -1,7 +1,6 @@
 import os
 import sys
 
-
 class Silencer:
     def __enter__(self):
         self._original_stdout = sys.stdout
