@@ -13,6 +13,7 @@ from typing import Tuple, Union, Dict, List
 from ..Util.pyDialogue import pyDialogue as pD
 from .FileGrabber import FileGrabber
 
+
 # %% Convenience Class
 class BatchFactory:
     config: Dict[str, Union[str, int, float, bool]]
@@ -191,7 +192,7 @@ class BatchFactory:
             dtype_masks_out=dtype_masks_out,
             gen_type=gen_type,
             gen_seed=gen_seed,
-            num_shuffle=num_shuffle_train
+            num_shuffle=num_shuffle_train,
         )
 
         val_dataset = FileGrabber(
@@ -203,7 +204,7 @@ class BatchFactory:
             dtype_masks_out=dtype_masks_out,
             gen_type=gen_type,
             gen_seed=gen_seed,
-            num_shuffle=num_shuffle_val
+            num_shuffle=num_shuffle_val,
         )
 
         if self.DEBUG:

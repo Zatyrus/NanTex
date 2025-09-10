@@ -22,7 +22,7 @@ class FileGrabber(Dataset):
         dtype_masks_out: np.dtype = np.float32,
         gen_type: str = "DXSM",
         gen_seed: int = None,
-        num_shuffle:int = 7
+        num_shuffle: int = 7,
     ) -> None:
         """Data generator object used in training and validation to load, augment and distribute raw and validation data in batch.
 
@@ -39,27 +39,27 @@ class FileGrabber(Dataset):
         """
 
         "Initialization"
-        
+
         ## content
         self._files = files
-        
+
         # format info
         self._patchsize = patchsize
         self._in_channels = in_channels
         self._out_channels = out_channels
-        
+
         # metainformation
         self._dtype_masks_out = dtype_masks_out
         self._dtype_overlay_out = dtype_overlay_out
-        
+
         # randomization
         self._gen_type = gen_type
         self._gen_seed = gen_seed
         self._num_shuffle = num_shuffle
-        
+
         # behavioral flags
         ...
-        
+
         # post init routines
         self.__post_init__()
 
@@ -67,7 +67,7 @@ class FileGrabber(Dataset):
         self.__initialize_generator__()
         self.__shuffle_paths__()
 
-    def __initialize_generator__(self)->NoReturn:
+    def __initialize_generator__(self) -> NoReturn:
         ## Initialize Bit Generator
         self._gen: np.random.Generator
         if self._gen_seed == None:
@@ -75,11 +75,11 @@ class FileGrabber(Dataset):
         else:
             self._gen = seed_generator(self._gen_type, self._gen_seed)
 
-    def __shuffle_paths__(self)->NoReturn:
+    def __shuffle_paths__(self) -> NoReturn:
         while self._num_shuffle:
             # shuffle filepaths
             self._gen.shuffle(self._files)
-            
+
             # reduce counter
             self._num_shuffle -= 1
 
@@ -139,7 +139,7 @@ class FileGrabber(Dataset):
         # Extract Img and Masks
         X = tmp[self._out_channels :]
         y = tmp[: self._out_channels]
-        
+
         # ensure data type
         X = torch.from_numpy(X.astype(self._dtype_overlay_out))
         y = torch.from_numpy(y.astype(self._dtype_masks_out))
