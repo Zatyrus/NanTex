@@ -7,7 +7,7 @@ import itertools
 import webbrowser
 import numpy as np
 import albumentations as A
-from typing import List, Tuple, Union, Dict, Any, Optional, NoReturn, Callable, Type
+from typing import List, Tuple, Union, Dict, Any, Optional, NoReturn, Callable
 
 # for progress bar
 # detect jupyter notebook
@@ -63,7 +63,9 @@ class OverlayGenerator(FileHandlerCore):
     @mode.setter
     def mode(self, value):
         if value not in ["overlay", "rotation"]:
-            raise ValueError("Mode not supported yet. Please choose 'overlay' or 'rotation'.")
+            raise ValueError(
+                "Mode not supported yet. Please choose 'overlay' or 'rotation'."
+            )
         self._mode = value
         self._update_metadata("mode", value)
 
@@ -102,11 +104,11 @@ class OverlayGenerator(FileHandlerCore):
     def imagesize(self, value):
         self._imagesize = value
         self._update_metadata("imagesize", value)
-        
+
     @property
     def max_input_dimensions(self):
         return self._max_input_dimensions
-    
+
     @max_input_dimensions.setter
     def max_input_dimensions(self, value):
         self._max_input_dimensions = value
@@ -221,7 +223,10 @@ class OverlayGenerator(FileHandlerCore):
         self._patchsize = patchsize
         self._imagesize = imagesize
         self._multi_core = multi_core
-        self._max_input_dimensions = (0, 0)  # will be updated after loading input images
+        self._max_input_dimensions = (
+            0,
+            0,
+        )  # will be updated after loading input images
 
         # handle sleep time
         self._sleeptime = 0.1
@@ -758,7 +763,7 @@ class OverlayGenerator(FileHandlerCore):
 
     def get_y_lim(self) -> int:
         return max([img.shape[0] for img in sum(list(self.data_in.values()), [])])
-    
+
     def get_max_input_dimensions(self) -> Tuple[int, int]:
         if self._DEBUG:
             print("Calculating max input dimensions...")
@@ -767,7 +772,9 @@ class OverlayGenerator(FileHandlerCore):
             self.max_input_dimensions = (self.get_y_lim(), self.get_x_lim())
         elif self._mode == "rotation":
             self.max_input_dimensions = (
-                max(self.get_y_lim(), self.get_x_lim()), # <- we need to account for 90 and 270 degree rotations
+                max(
+                    self.get_y_lim(), self.get_x_lim()
+                ),  # <- we need to account for 90 and 270 degree rotations
                 max(self.get_y_lim(), self.get_x_lim()),
             )
 
@@ -969,12 +976,7 @@ class OverlayGenerator(FileHandlerCore):
         if self._DEBUG:
             print("Padding input images...")
         for key, value in self.data_in.items():
-            self.data_in[key] = [
-                self.__pad_img__(
-                    img=img
-                )
-                for img in value
-            ]
+            self.data_in[key] = [self.__pad_img__(img=img) for img in value]
 
     def __normalize_input_imgs__(self) -> NoReturn:
         if self._DEBUG:
@@ -1029,7 +1031,7 @@ class OverlayGenerator(FileHandlerCore):
 
         # handle disable_auto_standardization warnings
         self.__handle_disable_auto_standardization__()
-        
+
         # get max input dimensions
         self.get_max_input_dimensions()
 

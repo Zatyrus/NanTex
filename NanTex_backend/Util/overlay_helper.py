@@ -17,6 +17,7 @@ try:
 except:
     from tqdm import tqdm
 
+
 class OVERLAY_HELPER:
     # %% Helper
     @staticmethod
