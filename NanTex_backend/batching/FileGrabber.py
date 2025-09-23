@@ -3,13 +3,28 @@ import torch
 import numpy as np
 
 from torch.utils.data import Dataset
-from typing import Tuple, Dict, List, NoReturn
+from typing import Tuple, Dict, List, NoReturn, Any
 
 ## Custom Dependencies
 from ..Util.bit_generator_utils import initialize_generator, seed_generator
 
 
 class FileGrabber(Dataset):
+    # attributes
+    _files: List[str]
+    _patchsize: Tuple[int, int]
+    _in_channels: int
+    _out_channels: int
+
+    _dtype_overlay_out: np.dtype
+    _dtype_masks_out: np.dtype
+
+    _gen_type: str
+    _gen_seed: int
+    _gen: np.random.Generator
+
+    _num_shuffle: int
+
     "Load, Augment and distribute batches for training & valitation."
 
     def __init__(
@@ -64,18 +79,32 @@ class FileGrabber(Dataset):
         self.__post_init__()
 
     def __post_init__(self) -> NoReturn:
+        """Post-initialization routine to set up the dataset.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         self.__initialize_generator__()
         self.__shuffle_paths__()
 
     def __initialize_generator__(self) -> NoReturn:
-        ## Initialize Bit Generator
-        self._gen: np.random.Generator
+        """Initialize the random number generator based on the specified type and seed.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
+
         if self._gen_seed == None:
             self._gen = initialize_generator(self._gen_type)
         else:
             self._gen = seed_generator(self._gen_type, self._gen_seed)
 
     def __shuffle_paths__(self) -> NoReturn:
+        """Shuffle the file paths in the dataset. This method shuffles the file paths a specified number (self._num_shuffle) of times to ensure randomness.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         while self._num_shuffle:
             # shuffle filepaths
             self._gen.shuffle(self._files)
@@ -84,21 +113,21 @@ class FileGrabber(Dataset):
             self._num_shuffle -= 1
 
     def __len__(self) -> int:
-        """Denotes the number of files per batch
+        """Get the total number of files in the dataset.
 
         Returns:
-            int: Number of files in batch
+            int: Total number of files.
         """
         return len(self._files)
 
-    def __getitem__(self, index) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Generate one batch of data
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Fetch a single data sample and its corresponding mask.
 
         Args:
-            index (int): index of file in dataset to load
+            index (int): Index of the data sample to fetch.
 
         Returns:
-            np.ndarray: X - samples, y - ground truth
+            Tuple[torch.Tensor, torch.Tensor]: The data sample and its corresponding mask.
         """
 
         # initialize stack to reserve memory
@@ -110,7 +139,11 @@ class FileGrabber(Dataset):
         return X, y
 
     def __initialize_stack__(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        # setup the batch
+        """Initialize the data and mask tensors.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: The initialized data and mask tensors.
+        """
         X = torch.from_numpy(
             np.empty(
                 (1, self._in_channels, *self._patchsize),
@@ -126,13 +159,14 @@ class FileGrabber(Dataset):
         return X, y
 
     def __fetch_data__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Generates data containing # batch_size augmented samples and likewise augmented ground truth.
+        """Fetch a single data sample and its corresponding mask.
+
+        Args:
+            index (int): Index of the data sample to fetch.
 
         Returns:
-            np.ndarray: X - augmentd sample stack,
-            y - augmented ground truth stack
+            Tuple[torch.Tensor, torch.Tensor]: The data sample and its corresponding mask.
         """
-
         # grab data
         tmp = np.load(self._files[index])
 
@@ -144,16 +178,15 @@ class FileGrabber(Dataset):
         X = torch.from_numpy(X.astype(self._dtype_overlay_out))
         y = torch.from_numpy(y.astype(self._dtype_masks_out))
 
-        # if self._in_channels == 1:
-        #     X = X[torch.newaxis, ...]
-
-        # if self._out_channels == 1:
-        #     y = y[torch.newaxis, ...]
-
         return X, y
 
-    # %% Dunder Dethods
-    def get_dict(self) -> Dict:
+    # %% Dunder Methods
+    def get_dict(self) -> Dict[Any, Any]:
+        """Get the internal state of the object as a dictionary.
+
+        Returns:
+            Dict[Any, Any]: Internal state of the object.
+        """
         return self.__dict__
 
     # %% Helper

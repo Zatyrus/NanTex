@@ -6,24 +6,24 @@ import numpy as np
 from pprint import pprint
 
 from torch.utils.data import DataLoader
-
-from typing import Tuple, Union, Dict, List
+from typing import Tuple, Union, Dict, List, NoReturn
 
 ## Custom Dependencies
 from ..Util.pyDialogue import pyDialogue as pD
 from .FileGrabber import FileGrabber
+from ..Util.tool_collection import detect_workers
 
 
 # %% Convenience Class
 class BatchFactory:
-    config: Dict[str, Union[str, int, float, bool]]
     data_path_container: Dict[str, List[str]]
+    config: Dict[str, Union[str, int, float, bool]]
     datatype: str
     DEBUG: bool
 
     def __init__(
         self, config: Dict = None, datatype: str = "npy", DEBUG: bool = False
-    ) -> None:
+    ) -> NoReturn:
         self.config = config
         self.DEBUG = DEBUG
         self.datatype = datatype
@@ -31,7 +31,12 @@ class BatchFactory:
 
         self.__post_init__()
 
-    def __post_init__(self) -> None:
+    def __post_init__(self) -> NoReturn:
+        """Post-initialization setup for the BatchFactory class.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         self.__config_startup__()
         self.__check_datatype__()
         self.__check_config__()
@@ -46,7 +51,16 @@ class BatchFactory:
     def from_config(
         cls, config_file_path: str = None, datatype: str = "npy", DEBUG: str = False
     ) -> "BatchFactory":
-        # Fetch the configuration file path
+        """Create a BatchFactory instance from a configuration file.
+
+        Args:
+            config_file_path (str, optional): Path to the configuration file. Defaults to None.
+            datatype (str, optional): Data type of the input files. Defaults to "npy".
+            DEBUG (str, optional): Debug mode flag. Defaults to False.
+
+        Returns:
+            BatchFactory: An instance of the BatchFactory class.
+        """
         if config_file_path == None:
             config_file_path = pD.askFILE(
                 "Please provide the path to the configuration file."
@@ -59,15 +73,15 @@ class BatchFactory:
 
     # %% Convenience Functions
     @staticmethod
-    def generate_biolerplate_config_file(outpath: str = None) -> None:
-        """
-        Generate a configuration file for the data generator object.
-        This file can be used to store the configuration of the data generator object for later use.
+    def generate_biolerplate_config_file(outpath: str = None) -> NoReturn:
+        """Generate a boilerplate configuration file for the data generator object.
+
+        Args:
+            outpath (str, optional): Path to the output directory. Defaults to None.
 
         Returns:
-            dict: Configuration file
+            NoReturn: This function does not return a value.
         """
-
         if outpath == None:
             outpath = pD.askDIR("Please provide the path to the output directory.")
 
@@ -75,27 +89,27 @@ class BatchFactory:
         config = {
             "raw_source": None,  # Required
             "val_source": None,  # Required
-            "train_batchsize": 32,  # Number of patches per batch. <- play with it if you want, but PLEASE keep it a power of 2.
-            "val_batchsize": 8,  # Might want to change that if you play with the validation scheme. Leave 1 if you have an image (not patch) based validation.
-            "train_shuffle_per_draw": True,  # LEAVE TRUE, unless you know what you are doing
-            "val_shuffle_per_draw": True,  # LEAVE TRUE, unless you know what you are doing
-            "num_shuffle_train": 7,  # Number of times the training data is shuffled on setup
-            "num_shuffle_val": 7,  # Number of times the validation data is shuffled on setup
+            "train_batchsize": 32,  # Number of patches per training batch.
+            "val_batchsize": 8,  # Number of patches per validation batch.
+            "train_shuffle_on_draw": True,  # Shuffle training data between batches.
+            "val_shuffle_on_draw": True,  # Shuffle validation data between batches.
+            "num_shuffle_train": 11,  # Number of times the training data is shuffled on setup
+            "num_shuffle_val": 11,  # Number of times the validation data is shuffled on setup
             "patchsize": (
                 256,
                 256,
-            ),  # Patch Dimension for training (row, column) <- play with it, but PLEASE keep it a power of 2.
-            "num_train_workers": 4,  # Number of workers <- run the detect_workers() function to get a recommendation. I hope you got more than 4.
-            "num_val_workers": 2,  # Number of workers for validation <- run the detect_workers() function to get a recommendation. This can be lower than the training workers.
+            ),  # Patch Dimension for training (row, column) <- play with it; use a power of 2.
+            "num_train_workers": 4,  # Number of workers <- run the detect_workers() function to get a recommendation.
+            "num_val_workers": 2,  # Number of workers for validation <- run the detect_workers() function to get a recommendation.
             "prefetch": 8,  # Number of batches to prefetch <- based on your computational resources.
             "in_channels": 1,  # Number of input channels <- 1 for grayscale, 3 for RGB | For the sake of NanTex, we use 1. Leave it.
             "out_channels": 3,  # Number of output channels <- Number of structures to segment.
-            "dtype_overlay_out": "float32",  # Data type of the output data <- Leave it.
-            "dtype_masks_out": "float32",  # Data type of the masks <- Leave it.
-            "gen_type": "DXSM",  # Type of random number generator <- Leave it, if you don't know what you are doing.
-            "gen_seed": None,  # Seed for the random number generator <- Use for reproducibility.
-            "pin_memory": True,  # Flag to pin memory <- Leave it.
-            "persistant_workers": True,  # Flag to keep workers alive <- Leave it.
+            "dtype_overlay_out": "float32",  # Data type of the output.
+            "dtype_masks_out": "float32",  # Data type of the masks.
+            "gen_type": "DXSM",  # Type of random number generator.
+            "gen_seed": None,  # Seed for the random number generator. Reproducibility is only one integer away. :3
+            "pin_memory": True,  # Flag to pin memory. <- will consume more ressources but speed-up the pdocess.
+            "persistant_workers": True,  # Flag to keep workers alive between runs. <- will consume more ressources but speed-up the pdocess.
         }
 
         # Dump the configuration file
@@ -104,6 +118,11 @@ class BatchFactory:
 
     # %% Factory Functions
     def build(self) -> Tuple[DataLoader, DataLoader]:
+        """Main function to build Raw- and Validation data Loaders.
+
+        Returns:
+            Tuple[DataLoader, DataLoader]: Raw and validation data loader objects.
+        """
         # run checkups
         if self.DEBUG:
             print("Running checks.")
@@ -132,8 +151,8 @@ class BatchFactory:
         out_channels=3,
         train_batchsize: int = 32,
         val_batchsize: int = 8,
-        train_shuffle_per_draw: bool = True,
-        val_shuffle_per_draw: bool = True,
+        train_shuffle_on_draw: bool = True,
+        val_shuffle_on_draw: bool = True,
         num_shuffle_train: int = 7,
         num_shuffle_val: int = 7,
         num_train_workers: int = 6,
@@ -153,17 +172,16 @@ class BatchFactory:
 
         Args:
             raw_source (str): Path to raw data.
-            val_source (str, optional): Path to validation data if applicable. Defaults to None.
-            val_split (float, optional): Percentage of raw data to use as a substitution for validation. This is NOT recommended, but better than no validation when heavy augmentation is applied to the data. Defaults to 0.1.
-            patchsize (tuple, optional): Set raw patch dimensions in px. (row,column). Defaults to (256,256).
+            val_source (str, optional): Path to validation data.
+            patchsize (tuple, optional): Set patch dimensions in px. (row,column). Defaults to (256,256).
             in_channels (int, optional): Number of input channels. Each channel is used for one feature only. (e.g. gray scale image -> 1 in-channel). Defaults to 1.
             out_channels (int, optional): Number of output channels. Is equal to the number of structures to separate. Defaults to 3.
-            train_batchsize (int, optional): Number of patches per batch. Defaults to 32.
-            val_batchsize (int, optional): Set the number of batches used in validation. Defaults to 1.
+            train_batchsize (int, optional): Number of patches per training batch. Defaults to 32.
+            val_batchsize (int, optional): Number of patches per validation batch. Defaults to 8.
             train_shuffle_on_draw (bool, optional): Flag to shuffle datasets between batches. Recommended. Defaults to True.
             val_shuffle_on_draw (bool, optional): Flag to shuffle datasets between batches. Recommended. Defaults to True.
-            num_shuffle_train (int, optional): Number of times the training data is shuffled on setup. Defaults to 7.
-            num_shuffle_val (int, optional): Number of times the validation data is shuffled on setup. Defaults to 7.
+            num_shuffle_train (int, optional): Number of times the training data is shuffled on setup. Defaults to 11.
+            num_shuffle_val (int, optional): Number of times the validation data is shuffled on setup. Defaults to 11.
             num_train_workers (int, optional): Number of workers for training. Defaults to 6.
             num_val_workers (int, optional): Number of workers for validation. Defaults to 2.
             prefetch (int, optional): Set how many batches should be queued per worker. Defaults to 8.
@@ -174,7 +192,7 @@ class BatchFactory:
             gen_type (str, optional): Type of random number generator. Defaults to 'DXSM'.
             gen_seed (int, optional): Seed for the random number generator. Defaults to None.
         Returns:
-            DataLoader: _description_
+            Tuple[DataLoader, DataLoader]: Training and validation data loaders.
         """
         if self.DEBUG:
             print("Building Data Loader.")
@@ -214,7 +232,7 @@ class BatchFactory:
             DataLoader(
                 dataset=train_dataset,
                 batch_size=train_batchsize,
-                shuffle=train_shuffle_per_draw,
+                shuffle=train_shuffle_on_draw,
                 pin_memory=pin_memory,
                 num_workers=num_train_workers,
                 prefetch_factor=prefetch,
@@ -223,7 +241,7 @@ class BatchFactory:
             DataLoader(
                 dataset=val_dataset,
                 batch_size=val_batchsize,
-                shuffle=val_shuffle_per_draw,
+                shuffle=val_shuffle_on_draw,
                 pin_memory=pin_memory,
                 num_workers=num_val_workers,
                 prefetch_factor=prefetch,
@@ -231,34 +249,62 @@ class BatchFactory:
             ),
         )
 
-    # %% Helper Functions
-    def __load_config__(self, config_path: str) -> None:
+    # %% Dunder Methods for Config and Sources
+    def __load_config__(self, config_path: str) -> NoReturn:
+        """Load configuration from a JSON file.
+
+        Args:
+            config_path (str): Path to the configuration file.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         with open(config_path, "r") as f:
             self.config = json.load(f)
 
-    def __load_sources__(self) -> None:
+    def __load_sources__(self) -> NoReturn:
+        """Load data sources for training and validation.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         if self.DEBUG:
             print("Loading data sources.")
 
-        self.__load_raw_source__()
-        self.__load_val_source__()
+        self.__fetch_raw_files__()
+        self.__fetch_validation_files__()
 
-    def __call_sources__(self) -> None:
+    def __call_sources__(self) -> NoReturn:
+        """Call the explorer for all data sources.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         if self.DEBUG:
             print("Loading data sources.")
 
-        self.__call_raw_source__()
-        self.__call_val_source__()
+        self.__call_for_raw_source__()
+        self.__call_for_val_source__()
 
-    def __call_raw_source__(self) -> None:
+    def __call_for_raw_source__(self) -> NoReturn:
+        """Call for raw data source using the explorer.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         if self.DEBUG:
-            print("Callling raw data source.")
+            print("Calling raw data source.")
 
         self.config["raw_source"] = pD.askDIR(
             "Please provide the path to the raw data source."
         )
 
-    def __call_val_source__(self) -> None:
+    def __call_for_val_source__(self) -> NoReturn:
+        """Call the explorer if no validation data source is provided in the configuration.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         if self.DEBUG:
             print("Callling validation data source.")
 
@@ -266,7 +312,12 @@ class BatchFactory:
             "Please provide the path to the validation data source."
         )
 
-    def __load_raw_source__(self) -> None:
+    def __fetch_raw_files__(self) -> NoReturn:
+        """Fetch raw files and store them in the data path container.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         if self.DEBUG:
             print("Loading raw data source.")
 
@@ -274,7 +325,12 @@ class BatchFactory:
             f"{self.config['raw_source']}/*.{self.datatype}"
         )
 
-    def __load_val_source__(self) -> None:
+    def __fetch_validation_files__(self) -> NoReturn:
+        """Fetch validation files and store them in the data path container.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         if self.DEBUG:
             print("Loading validation data source.")
 
@@ -282,34 +338,16 @@ class BatchFactory:
             f"{self.config['val_source']}/*.{self.datatype}"
         )
 
-    def get_config(self) -> Dict:
-        return self.config
+    def __config_startup__(self) -> NoReturn:
+        """Load or generate configuration file.
 
-    def pprint_config(self) -> None:
-        pprint(self.config)
-
-    def print_config(self) -> None:
-        print(json.dumps(self.config, indent=4, sort_keys=False))
-
-    def load_config(self, config_path: str = None) -> None:
-        if config_path == None:
-            self.__load_config__(
-                pD.askFILE("Please provide the path to the configuration file.")
-            )
-        self.__load_config__(config_path)
-
-    def call_sources(self) -> None:
-        self.__call_sources__()
-
-    def load_sources(self) -> None:
-        self.__load_sources__()
-
-    # %% Checkups
-    def __config_startup__(self) -> None:
+        Returns:
+            NoReturn: This function does not return a value.
+        """
         if self.DEBUG:
             print("Checking for configuration startup.")
 
-        # Ceck for the configuration file
+        # Check for the configuration file
         if self.config == None:
             if not self.__check_config__():
                 self.generate_biolerplate_config_file(outpath=f"{os.getcwd()}/config")
@@ -317,7 +355,69 @@ class BatchFactory:
                 config_path=f"{os.getcwd()}/BatchDataLoader_config.json"
             )
 
+    # %% Exposed Methods for Config and Sources
+    def get_config(self) -> Dict:
+        """Return the current configuration.
+
+        Returns:
+            Dict: The current configuration dictionary.
+        """
+        return self.config
+
+    def pprint_config(self) -> NoReturn:
+        """Print the configuration in a pretty format.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
+        pprint(self.config)
+
+    def print_config(self) -> NoReturn:
+        """Print the configuration in a readable format.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
+        print(json.dumps(self.config, indent=4, sort_keys=False))
+
+    def load_config(self, config_path: str = None) -> NoReturn:
+        """Load configuration from a file.
+
+        Args:
+            config_path (str, optional): Path to the configuration file. Defaults to None.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
+        if config_path == None:
+            self.__load_config__(
+                pD.askFILE("Please provide the path to the configuration file.")
+            )
+        self.__load_config__(config_path)
+
+    def call_sources(self) -> NoReturn:
+        """Call explorer if no data sources are provided in the configuration.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
+        self.__call_sources__()
+
+    def load_sources(self) -> NoReturn:
+        """Load data sources from paths provided in the configuration.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
+        self.__load_sources__()
+
+    # %% Checkups
     def __check__(self) -> bool:
+        """Run all checks.
+
+        Returns:
+            bool: True if all checks pass, False otherwise.
+        """
         return all(
             [
                 self.__check_config__(),
@@ -327,6 +427,11 @@ class BatchFactory:
         )
 
     def __check_config__(self) -> bool:
+        """Check if the configuration is valid.
+
+        Returns:
+            bool: True if the configuration is valid, False otherwise.
+        """
         if self.DEBUG:
             print("Checking configuration.")
 
@@ -339,6 +444,11 @@ class BatchFactory:
             return False
 
     def __check_sources__(self) -> bool:
+        """Check if the data sources are provided and available.
+
+        Returns:
+            bool: True if the data sources are valid, False otherwise.
+        """
         if self.DEBUG:
             print("Checking data sources.")
 
@@ -348,12 +458,23 @@ class BatchFactory:
             )
             assert type(self.config["raw_source"]) == str
             assert type(self.config["val_source"]) == str
+            assert os.path.exists(self.config["raw_source"])
+            assert os.path.exists(self.config["val_source"])
+            assert os.path.isdir(self.config["raw_source"])
+            assert os.path.isdir(self.config["val_source"])
+            assert len(glob.glob(f"{self.config['raw_source']}/*.{self.datatype}")) > 0
+            assert len(glob.glob(f"{self.config['val_source']}/*.{self.datatype}")) > 0
             return True
         except Exception as e:
             print(e)
             return False
 
     def __check_datatype__(self) -> bool:
+        """Check the data type of the input files.
+
+        Returns:
+            bool: True if the data type is supported, False otherwise.
+        """
         if self.DEBUG:
             print("Checking datatype.")
 
@@ -364,3 +485,12 @@ class BatchFactory:
             print("Datatype not supported.")
             print(e)
             return False
+
+    # %% Helper Functions
+    def detect_workers(self) -> int:
+        """Detect the number of available CPU cores for multiprocessing.
+
+        Returns:
+            int: Number of available CPU cores.
+        """
+        return detect_workers()
