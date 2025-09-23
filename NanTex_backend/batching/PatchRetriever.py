@@ -9,7 +9,7 @@ from typing import Tuple, Dict, List, NoReturn, Any
 from ..Util.bit_generator_utils import initialize_generator, seed_generator
 
 
-class FileGrabber(Dataset):
+class PatchRetriever(Dataset):
     # attributes
     _files: List[str]
     _patchsize: Tuple[int, int]

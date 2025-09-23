@@ -10,7 +10,7 @@ from typing import Tuple, Union, Dict, List, NoReturn
 
 ## Custom Dependencies
 from ..Util.pyDialogue import pyDialogue as pD
-from .FileGrabber import FileGrabber
+from .PatchRetriever import PatchRetriever
 from ..Util.tool_collection import detect_workers
 
 
@@ -200,8 +200,8 @@ class BatchFactory:
         if val_source == None:
             raise ValueError("Validation source must be provided.")
 
-        ## Retrun FileGrabber objects for train and test data
-        train_dataset = FileGrabber(
+        ## Retrun PatchRetriever objects for train and test data
+        train_dataset = PatchRetriever(
             files=raw_source,
             patchsize=patchsize,
             in_channels=in_channels,
@@ -213,7 +213,7 @@ class BatchFactory:
             num_shuffle=num_shuffle_train,
         )
 
-        val_dataset = FileGrabber(
+        val_dataset = PatchRetriever(
             files=val_source,
             patchsize=patchsize,
             in_channels=in_channels,
