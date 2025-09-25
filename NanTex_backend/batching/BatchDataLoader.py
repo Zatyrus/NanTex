@@ -96,7 +96,7 @@ class DataGenerator(Dataset):
 
         ## Initialize Bit Generator
         self.__gen: np.random.Generator
-        if gen_seed == None:
+        if gen_seed is None:
             self.__gen = initialize_generator(gen_type)
         else:
             self.__gen = seed_generator(gen_type, gen_seed)
@@ -221,7 +221,7 @@ class DataGenerator(Dataset):
             y - augmented ground truth stack
         """
         # No Augmentation
-        if self.__transform == None:
+        if self.__transform is None:
             self.__transform = A.Compose(
                 [
                     A.RandomCrop(*self.__dim, always_apply=True),
@@ -354,7 +354,7 @@ class BatchDataLoader_Handler:
         cls, config_file_path: str = None, datatype: str = "npy", DEBUG: str = False
     ) -> "BatchDataLoader_Handler":
         # Fetch the configuration file path
-        if config_file_path == None:
+        if config_file_path is None:
             config_file_path = pD.askFILE(
                 "Please provide the path to the configuration file."
             )
@@ -375,7 +375,7 @@ class BatchDataLoader_Handler:
             dict: Configuration file
         """
 
-        if outpath == None:
+        if outpath is None:
             outpath = pD.askDIR("Please provide the path to the output directory.")
 
         # set the configuration dictionary
@@ -532,7 +532,7 @@ class BatchDataLoader_Handler:
 
         ## Initialize Random Number Generator
         tmp_gen: np.random.Generator
-        if gen_seed == None:
+        if gen_seed is None:
             tmp_gen = initialize_generator(gen_type)
         else:
             tmp_gen = seed_generator(gen_type, gen_seed)
@@ -540,7 +540,7 @@ class BatchDataLoader_Handler:
         if self.DEBUG:
             print("Building Data Loader.")
 
-        if val_source == None:
+        if val_source is None:
             if (val_split < 1.0) and (val_split > 0.0):
                 val_source = tmp_gen.choice(
                     raw_source, size=int(len(raw_source) * val_split), replace=False
@@ -764,7 +764,7 @@ class BatchDataLoader_Handler:
         print(json.dumps(self.config, indent=4, sort_keys=False))
 
     def load_config(self, config_path: str = None) -> None:
-        if config_path == None:
+        if config_path is None:
             self.__load_config__(
                 pD.askFILE("Please provide the path to the configuration file.")
             )
@@ -782,7 +782,7 @@ class BatchDataLoader_Handler:
             print("Checking for configuration startup.")
 
         # Ceck for the configuration file
-        if self.config == None:
+        if self.config is None:
             if not self.__check_config__():
                 self.generate_biolerplate_config_file(outpath=f"{os.getcwd()}/config")
             self.__load_config__(
@@ -804,7 +804,7 @@ class BatchDataLoader_Handler:
             print("Checking configuration.")
 
         try:
-            assert self.config != None
+            assert self.config is not None
             assert type(self.config) == dict
             return True
         except Exception as e:
