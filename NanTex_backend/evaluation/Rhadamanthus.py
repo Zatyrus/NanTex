@@ -47,10 +47,133 @@ class Rhadamanthus(FileHandlerCore):
     multi_cpu_tool: MultiCoreExecutionTool
     
     mode: str  # has_ground_truth or no_ground_truth
-    device: str = "cpu"  # or gpu or multi-cpu if available
+    device: str # or gpu or multi-cpu if available
     patchsize: Tuple[int, int]  # default patch size
 
+    # %% properties
+    @property
+    def data_paths_in(self) -> Dict[str, List[str]]:
+        return self._data_paths_in
+    @data_paths_in.setter
+    def data_paths_in(self, value: Dict[str, List[str]]) -> None:
+        if isinstance(value, dict):
+            self._data_paths_in = value
+        else:
+            raise ValueError("data_paths_in must be a dictionary.")
+        
+    @property
+    def data_path_out(self) -> str:
+        return self._data_path_out
+    @data_path_out.setter
+    def data_path_out(self, value: str) -> None:
+        if isinstance(value, str) or value is None:
+            self._data_path_out = value
+        else:
+            raise ValueError("data_path_out must be a string or None.")
+        
+    @property
+    def data_in(self) -> Dict[str, np.ndarray]:
+        return self._data_in
+    @data_in.setter
+    def data_in(self, value: Dict[str, np.ndarray]) -> None:
+        if isinstance(value, dict):
+            self._data_in = value
+        else:
+            raise ValueError("data_in must be a dictionary.")
+        
+    @property
+    def results(self) -> Dict[str, Any]:
+        return self._results
+    @results.setter
+    def results(self, value: Dict[str, Any]) -> None:
+        raise AttributeError("results is a read-only property.")
+    
+    @property
+    def metadata(self) -> Dict[str, Any]:
+        return self._metadata
+    @metadata.setter
+    def metadata(self, value: Dict[str, Any]) -> None:
+        raise AttributeError("metadata is a read-only property.")
+    
+    @property
+    def metrics(self) -> Dict[str, Any]:
+        return self._metrics
+    @metrics.setter
+    def metrics(self, value: Dict[str, Any]) -> None:
+        if isinstance(value, dict):
+            self._metrics = value
+            self.__update_metadata__(image_quality_metrics=list(value.keys()))
+        else:
+            raise ValueError("metrics must be a dictionary.")
+        
+    @property
+    def DEBUG(self) -> bool:
+        return self._DEBUG
+    @DEBUG.setter
+    def DEBUG(self, value: bool) -> None:
+        if isinstance(value, bool):
+            self._DEBUG = value
+            self.__update_metadata__(DEBUG=value)
+        else:
+            raise ValueError("DEBUG must be a boolean.")
+        
+    @property
+    def disable_tqdm(self) -> bool:
+        return self._disable_tqdm
+    @disable_tqdm.setter
+    def disable_tqdm(self, value: bool) -> None:
+        if isinstance(value, bool):
+            self._disable_tqdm = value
+            self.__update_metadata__(disable_tqdm=value)
+        else:
+            raise ValueError("disable_tqdm must be a boolean.")
+        
+    @property
+    def num_features(self) -> int:
+        return self._num_features
+    @num_features.setter
+    def num_features(self, value: int) -> None:
+        if isinstance(value, int) and value > 0:
+            self._num_features = value
+            self.__update_metadata__(num_features=value)
+        else:
+            raise ValueError("num_features must be a positive integer.")
 
+    @property
+    def mode(self) -> str:
+        return self._mode
+    @mode.setter
+    def mode(self, value: str) -> None:
+        if isinstance(value, str) and value in ["has_ground_truth", "no_ground_truth"]:
+            self._mode = value
+            self.__update_metadata__(mode=value)
+        else:
+            raise ValueError("mode must be 'has_ground_truth' or 'no_ground_truth'.")
+        
+    @property
+    def device(self) -> str:
+        return self._device
+    @device.setter
+    def device(self, value: str) -> None:
+        if isinstance(value, str) and value in ["cpu", "cuda", "multi_cpu"]:
+            self._device = value
+            self.__update_metadata__(device=value)
+        else:
+            raise ValueError("device must be 'cpu', 'cuda', or 'multi_cpu'.")
+        
+    @property
+    def patchsize(self) -> Tuple[int, int]:
+        return self._patchsize
+    @patchsize.setter
+    def patchsize(self, value: Tuple[int, int]) -> None:
+        if isinstance(value, (list, tuple)) and len(value) == 2 and all(isinstance(i, int) and i > 0 for i in value):
+            self._patchsize = tuple(value)
+            self.__update_metadata__(patch_size=tuple(value))
+        else:
+            raise ValueError("patchsize must be a tuple of two positive integers.")
+    
+    
+    # %% Initialization
     def __init__(
         self,
         num_features: int,
@@ -61,36 +184,36 @@ class Rhadamanthus(FileHandlerCore):
         **kwargs: Any,
     ) -> None:
         # data variables
-        self.data_paths_in = data_paths_in
-        self.data_path_out = data_path_out
-        self.data_in = {}
-        self.results = {}
+        self._data_paths_in = data_paths_in
+        self._data_path_out = data_path_out
+        self._data_in = {}
+        self._results = {}
 
         # metrics callables
-        self.metrics = {}
+        self._metrics = {}
 
         # model variables
-        self.num_features = num_features
+        self._num_features = num_features
 
         # control variables
-        self.DEBUG = DEBUG
-        self.mode = mode
+        self._DEBUG = DEBUG
+        self._mode = mode
 
         # internal variables
-        self.metadata = {}
+        self._metadata = {}
 
         # oneiros hook
-        self.oneiros = None
+        self._oneiros = None
 
         # oneiros
         if "oneiros" in kwargs:
-            if self.DEBUG:
+            if self._DEBUG:
                 print("Oneiros detected.")
-            self.oneiros = kwargs.get("oneiros", None)
+            self._oneiros = kwargs.get("oneiros", None)
 
         # Device
         if "device" in kwargs:
-            if self.DEBUG:
+            if self._DEBUG:
                 print(f"Trying to set device to {kwargs.get('device')}.")
             if kwargs.get("device") in ["gpu", "cuda"]:
                 import torch
@@ -98,7 +221,7 @@ class Rhadamanthus(FileHandlerCore):
                 if torch.cuda.is_available():
                     kwargs["device"] = "cuda"
                 else:
-                    if self.DEBUG:
+                    if self._DEBUG:
                         print("GPU not available, defaulting to CPU.")
                     kwargs["device"] = "cpu"
 
@@ -106,33 +229,33 @@ class Rhadamanthus(FileHandlerCore):
                 if cpu_count(logical=False) > 2:
                     self.device = "multi_cpu"
                 else:
-                    if self.DEBUG:
+                    if self._DEBUG:
                         print(
                             "Multiple CPU cores not available, defaulting to single CPU."
                         )
                     kwargs["device"] = "cpu"
 
         # handle patchsize
-        self.patchsize = (256, 256)  # default patch size
+        self._patchsize = (256, 256)  # default patch size
         if "patchsize" in kwargs:
             if (
                 isinstance(kwargs.get("patchsize"), (list, tuple))
                 and len(kwargs.get("patchsize")) == 2
             ):
-                self.patchsize = tuple(kwargs.get("patchsize"))
+                self._patchsize = tuple(kwargs.get("patchsize"))
 
         # handle disable_tqdm
-        self.disable_tqdm = False
+        self._disable_tqdm = False
         if "disable_tqdm" in kwargs:
             if isinstance(kwargs.get("disable_tqdm"), bool):
-                self.disable_tqdm = kwargs.get("disable_tqdm")
+                self._disable_tqdm = kwargs.get("disable_tqdm")
 
         # Call from parent class
         self.__post_init__()
 
     @override
     def __post_init__(self) -> NoReturn:
-        if not self.oneiros:
+        if not self._oneiros:
             try:
                 self.__load_data__()
                 self.__setup_metadata__()
@@ -142,7 +265,7 @@ class Rhadamanthus(FileHandlerCore):
                 if self.device == "multi_cpu":
                     self.__startup_multi_cpu__()
 
-                if self.DEBUG:
+                if self._DEBUG:
                     print("Rhadamanthus Initialized...")
 
             except Exception as e:
@@ -152,7 +275,7 @@ class Rhadamanthus(FileHandlerCore):
                 self.__read_dream_memory__()
                 self.__setup_metadata__()
 
-                if self.DEBUG:
+                if self._DEBUG:
                     print("Rhadamanthus Initialized from Oneiros...")
             except Exception as e:
                 print(f"Error: {e}")
@@ -213,14 +336,14 @@ class Rhadamanthus(FileHandlerCore):
     # %% Metaparameter Handler
     @override
     def __setup_metadata__(self) -> NoReturn:
-        self.metadata = {
+        self._metadata = {
             "image_quality_metrics": {},
             "patch_size": (256, 256),
         }
 
     # %% Main Evaluation Loop
-    def judge(self) -> NoReturn:
-        if self.DEBUG:
+    def pass_judgement(self) -> NoReturn:
+        if self._DEBUG:
             print("Judging...")
 
         # run checks
@@ -241,20 +364,20 @@ class Rhadamanthus(FileHandlerCore):
         # map to all data
         match self.device:
             case "cpu":
-                self.results = {
+                self._results = {
                     key: self.__judge_cpu__(**data)
                     for key, data in tqdm(
-                        self.data_in.items(),
-                        disable=self.disable_tqdm,
+                        self._data_in.items(),
+                        disable=self._disable_tqdm,
                         desc="Evaluating CPU...",
                     )
                 }
             case "cuda":
-                self.results = {
+                self._results = {
                     key: self.__judge_cuda__(**data)
                     for key, data in tqdm(
-                        self.data_in.items(),
-                        disable=self.disable_tqdm,
+                        self._data_in.items(),
+                        disable=self._disable_tqdm,
                         desc="Evaluating CUDA...",
                     )
                 }
@@ -263,7 +386,7 @@ class Rhadamanthus(FileHandlerCore):
                 self.__push_data_to_multi_cpu__()
 
                 # evaluate using multi-cpu tool
-                self.results = {
+                self._results = {
                     k: v["result"] for k, v in self.multi_cpu_tool.run(Rhadamanthus.__judge_multi_cpu__).items()
                 }
             case _:
@@ -304,7 +427,7 @@ class Rhadamanthus(FileHandlerCore):
     ) -> Dict[str, Any]:
         return dict(
             Rhadamanthus.__judgement__(
-                Rhadamanthus.__base_judgement_worker__, self.metrics, features, dreams
+                Rhadamanthus.__base_judgement_worker__, self._metrics, features, dreams
             )
         )
 
@@ -316,23 +439,26 @@ class Rhadamanthus(FileHandlerCore):
         return dict(Rhadamanthus.__judgement__(**kwargs))
 
     # %% Helper Functions
+    def __update_metadata__(self, **kwargs) -> NoReturn:
+        self._metadata.update(kwargs)
+        
     def __read_dream_memory__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Reading Dream Memory...")
-        self.data_in = self.oneiros.data_out
+        self._data_in = self._oneiros.data_out
 
     def __arrange_data__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Formatting Data...")
-        for key, data in self.data_in.items():
+        for key, data in self._data_in.items():
             if isinstance(data, np.ndarray):
-                self.data_in[key] = {
+                self._data_in[key] = {
                     "features": {
-                        f"feature_{i}": data[i] for i in range(self.num_features)
+                        f"feature_{i}": data[i] for i in range(self._num_features)
                     },
                     "dreams": {
-                        f"dream_{i}": data[i + self.num_features]
-                        for i in range(0, self.num_features)
+                        f"dream_{i}": data[i + self._num_features]
+                        for i in range(0, self._num_features)
                     },
                 }
             elif isinstance(data, dict):
@@ -342,9 +468,9 @@ class Rhadamanthus(FileHandlerCore):
                     raise ValueError(f"Data format for key {key} is incorrect.")
 
     def __cast_to_tensor__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Casting data to tensors...")
-        for key, data in self.data_in.items():
+        for key, data in self._data_in.items():
             if isinstance(data, dict) and "features" in data and "dreams" in data:
                 if all(
                     isinstance(v, torch.Tensor) for v in data["features"].values()
@@ -353,7 +479,7 @@ class Rhadamanthus(FileHandlerCore):
                 elif all(
                     isinstance(v, np.ndarray) for v in data["features"].values()
                 ) and all(isinstance(v, np.ndarray) for v in data["dreams"].values()):
-                    self.data_in[key] = {
+                    self._data_in[key] = {
                         "features": {
                             k: torch.from_numpy(v) for k, v in data["features"].items()
                         },
@@ -367,9 +493,9 @@ class Rhadamanthus(FileHandlerCore):
                 raise ValueError(f"Data format for key {key} is incorrect.")
 
     def __ensure_shape__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Assuring data shapes...")
-        for key, data in self.data_in.items():
+        for key, data in self._data_in.items():
             if isinstance(data, dict) and "features" in data and "dreams" in data:
                 if not any(
                     v.shape == self.__expected_input_dim__()
@@ -378,7 +504,7 @@ class Rhadamanthus(FileHandlerCore):
                     v.shape == self.__expected_input_dim__()
                     for v in data["dreams"].values()
                 ):
-                    self.data_in[key] = {
+                    self._data_in[key] = {
                         "features": {
                             k: v.unsqueeze(0).unsqueeze(0)
                             for k, v in data["features"].items()
@@ -392,20 +518,20 @@ class Rhadamanthus(FileHandlerCore):
                 raise ValueError(f"Data format for key {key} is incorrect.")
 
     def __send_to_device__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Sending data to device...")
         match self.device:
             case "cpu":
-                for key, data in self.data_in.items():
-                    self.data_in[key] = {
+                for key, data in self._data_in.items():
+                    self._data_in[key] = {
                         "features": {
                             k: v.to("cpu") for k, v in data["features"].items()
                         },
                         "dreams": {k: v.to("cpu") for k, v in data["dreams"].items()},
                     }
             case "cuda":
-                for key, data in self.data_in.items():
-                    self.data_in[key] = {
+                for key, data in self._data_in.items():
+                    self._data_in[key] = {
                         "features": {
                             k: v.to("cuda") for k, v in data["features"].items()
                         },
@@ -417,10 +543,10 @@ class Rhadamanthus(FileHandlerCore):
                 pass
 
     def __expected_input_dim__(self) -> Tuple[int, int, int]:
-        return (1, 1, *self.patchsize)  # (C, B, H, W)
+        return (1, 1, *self._patchsize)  # (C, B, H, W)
 
     def __startup_multi_cpu__(self, **kwargs) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Starting up Multi-CPU tool...")
 
         ## Default Cluster Settings
@@ -457,14 +583,14 @@ class Rhadamanthus(FileHandlerCore):
         )
 
     def __push_data_to_multi_cpu__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Pushing data to Multi-CPU tool...")
-        pushed_data = self.data_in
+        pushed_data = self._data_in
         # add metrics and the worker function to each case
         for key in pushed_data.keys():
             pushed_data[key].update(
                 {
-                    "metrics": self.metrics,
+                    "metrics": self._metrics,
                     "judgement_worker": Rhadamanthus.__base_judgement_worker__,
                 }
             )
@@ -477,11 +603,11 @@ class Rhadamanthus(FileHandlerCore):
         return (data - np.mean(data)) / (np.std(data) + 1e-8)
     
     def __min_max_normalize_data__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Min-Max Normalizing data...")
-        for key, data in self.data_in.items():
+        for key, data in self._data_in.items():
             if isinstance(data, dict) and "features" in data and "dreams" in data:
-                self.data_in[key] = {
+                self._data_in[key] = {
                     "features": {
                         k: self.__min_max_normalize__(v).astype(np.float32)
                         for k, v in data["features"].items()
@@ -495,11 +621,11 @@ class Rhadamanthus(FileHandlerCore):
                 raise ValueError(f"Data format for key {key} is incorrect.")
             
     def __z_score_normalize_data__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Z-Score Normalizing data...")
-        for key, data in self.data_in.items():
+        for key, data in self._data_in.items():
             if isinstance(data, dict) and "features" in data and "dreams" in data:
-                self.data_in[key] = {
+                self._data_in[key] = {
                     "features": {
                         k: self.__z_score_normalize__(v) 
                         for k, v in data["features"].items()
@@ -514,7 +640,7 @@ class Rhadamanthus(FileHandlerCore):
 
     # %% Checks
     def __run_checks__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Checking Data...")
         try:
             assert self.__check_data_in__()
@@ -524,26 +650,26 @@ class Rhadamanthus(FileHandlerCore):
             return
 
     def __check_metadata__(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Checking Metadata...")
         try:
-            assert len(self.metadata) > 0
+            assert len(self._metadata) > 0
             return True
         except AssertionError:
             print("Metadata is empty...")
             return False
 
     def __check_data_in__(self) -> bool:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Checking data...")
-        if len(self.data_in) == 0:
+        if len(self._data_in) == 0:
             print("Error: Data not loaded. Please load the data before proceeding.")
             return False
         return True
 
     # %% Exposed Methods
     def launch_multi_cpu_dashboard(self) -> NoReturn:
-        if self.DEBUG:
+        if self._DEBUG:
             print("Launching Multi-CPU Dashboard...")
         try:
             self.multi_cpu_tool.launch_dashboard()
