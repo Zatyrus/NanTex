@@ -14,6 +14,7 @@ from typing import List, Dict, Any, NoReturn, Generator, Tuple
 # for progress bar
 # detect jupyter notebook
 from IPython import get_ipython
+
 try:
     ipy_str = str(type(get_ipython()))
     if "zmqshell" in ipy_str:
@@ -45,59 +46,65 @@ class Rhadamanthus(FileHandlerCore):
 
     oneiros: Oneiros
     multi_cpu_tool: MultiCoreExecutionTool
-    
+
     mode: str  # has_ground_truth or no_ground_truth
-    device: str # or gpu or multi-cpu if available
+    device: str  # or gpu or multi-cpu if available
     patchsize: Tuple[int, int]  # default patch size
 
     # %% properties
     @property
     def data_paths_in(self) -> Dict[str, List[str]]:
         return self._data_paths_in
+
     @data_paths_in.setter
     def data_paths_in(self, value: Dict[str, List[str]]) -> None:
         if isinstance(value, dict):
             self._data_paths_in = value
         else:
             raise ValueError("data_paths_in must be a dictionary.")
-        
+
     @property
     def data_path_out(self) -> str:
         return self._data_path_out
+
     @data_path_out.setter
     def data_path_out(self, value: str) -> None:
         if isinstance(value, str) or value is None:
             self._data_path_out = value
         else:
             raise ValueError("data_path_out must be a string or None.")
-        
+
     @property
     def data_in(self) -> Dict[str, np.ndarray]:
         return self._data_in
+
     @data_in.setter
     def data_in(self, value: Dict[str, np.ndarray]) -> None:
         if isinstance(value, dict):
             self._data_in = value
         else:
             raise ValueError("data_in must be a dictionary.")
-        
+
     @property
     def results(self) -> Dict[str, Any]:
         return self._results
+
     @results.setter
     def results(self, value: Dict[str, Any]) -> None:
         raise AttributeError("results is a read-only property.")
-    
+
     @property
     def metadata(self) -> Dict[str, Any]:
         return self._metadata
+
     @metadata.setter
     def metadata(self, value: Dict[str, Any]) -> None:
         raise AttributeError("metadata is a read-only property.")
-    
+
     @property
     def metrics(self) -> Dict[str, Any]:
         return self._metrics
+
     @metrics.setter
     def metrics(self, value: Dict[str, Any]) -> None:
         if isinstance(value, dict):
@@ -105,10 +112,11 @@ class Rhadamanthus(FileHandlerCore):
             self.__update_metadata__(image_quality_metrics=list(value.keys()))
         else:
             raise ValueError("metrics must be a dictionary.")
-        
+
     @property
     def DEBUG(self) -> bool:
         return self._DEBUG
+
     @DEBUG.setter
     def DEBUG(self, value: bool) -> None:
         if isinstance(value, bool):
@@ -116,10 +124,11 @@ class Rhadamanthus(FileHandlerCore):
             self.__update_metadata__(DEBUG=value)
         else:
             raise ValueError("DEBUG must be a boolean.")
-        
+
     @property
     def disable_tqdm(self) -> bool:
         return self._disable_tqdm
+
     @disable_tqdm.setter
     def disable_tqdm(self, value: bool) -> None:
         if isinstance(value, bool):
@@ -127,10 +136,11 @@ class Rhadamanthus(FileHandlerCore):
             self.__update_metadata__(disable_tqdm=value)
         else:
             raise ValueError("disable_tqdm must be a boolean.")
-        
+
     @property
     def num_features(self) -> int:
         return self._num_features
+
     @num_features.setter
     def num_features(self, value: int) -> None:
         if isinstance(value, int) and value > 0:
@@ -142,6 +152,7 @@ class Rhadamanthus(FileHandlerCore):
     @property
     def mode(self) -> str:
         return self._mode
+
     @mode.setter
     def mode(self, value: str) -> None:
         if isinstance(value, str) and value in ["has_ground_truth", "no_ground_truth"]:
@@ -149,10 +160,11 @@ class Rhadamanthus(FileHandlerCore):
             self.__update_metadata__(mode=value)
         else:
             raise ValueError("mode must be 'has_ground_truth' or 'no_ground_truth'.")
-        
+
     @property
     def device(self) -> str:
         return self._device
+
     @device.setter
     def device(self, value: str) -> None:
         if isinstance(value, str) and value in ["cpu", "cuda", "multi_cpu"]:
@@ -160,19 +172,23 @@ class Rhadamanthus(FileHandlerCore):
             self.__update_metadata__(device=value)
         else:
             raise ValueError("device must be 'cpu', 'cuda', or 'multi_cpu'.")
-        
+
     @property
     def patchsize(self) -> Tuple[int, int]:
         return self._patchsize
+
     @patchsize.setter
     def patchsize(self, value: Tuple[int, int]) -> None:
-        if isinstance(value, (list, tuple)) and len(value) == 2 and all(isinstance(i, int) and i > 0 for i in value):
+        if (
+            isinstance(value, (list, tuple))
+            and len(value) == 2
+            and all(isinstance(i, int) and i > 0 for i in value)
+        ):
             self._patchsize = tuple(value)
             self.__update_metadata__(patch_size=tuple(value))
         else:
             raise ValueError("patchsize must be a tuple of two positive integers.")
-    
-    
+
     # %% Initialization
     def __init__(
         self,
@@ -348,7 +364,7 @@ class Rhadamanthus(FileHandlerCore):
 
         # run checks
         self.__run_checks__()
-        
+
         # normalize data
         self.__min_max_normalize_data__()
 
@@ -357,7 +373,7 @@ class Rhadamanthus(FileHandlerCore):
 
         # assure shapes
         self.__ensure_shape__()
-        
+
         # send to device
         self.__send_to_device__()
 
@@ -387,7 +403,10 @@ class Rhadamanthus(FileHandlerCore):
 
                 # evaluate using multi-cpu tool
                 self._results = {
-                    k: v["result"] for k, v in self.multi_cpu_tool.run(Rhadamanthus.__judge_multi_cpu__).items()
+                    k: v["result"]
+                    for k, v in self.multi_cpu_tool.run(
+                        Rhadamanthus.__judge_multi_cpu__
+                    ).items()
                 }
             case _:
                 pass
@@ -441,7 +460,7 @@ class Rhadamanthus(FileHandlerCore):
     # %% Helper Functions
     def __update_metadata__(self, **kwargs) -> NoReturn:
         self._metadata.update(kwargs)
-        
+
     def __read_dream_memory__(self) -> NoReturn:
         if self._DEBUG:
             print("Reading Dream Memory...")
@@ -550,7 +569,11 @@ class Rhadamanthus(FileHandlerCore):
             print("Starting up Multi-CPU tool...")
 
         ## Default Cluster Settings
-        instance_metadata: dict = {"num_cpus": 1, "num_gpus": 0, "ignore_reinit_error": True}
+        instance_metadata: dict = {
+            "num_cpus": 1,
+            "num_gpus": 0,
+            "ignore_reinit_error": True,
+        }
         if "instance_metadata" in kwargs:
             instance_metadata.update(kwargs.get("instance_metadata", {}))
 
@@ -579,7 +602,8 @@ class Rhadamanthus(FileHandlerCore):
 
         # initialize tool
         self.multi_cpu_tool = MultiCoreExecutionTool(
-            **RuntimeMetadata, **verbosity_flags,
+            **RuntimeMetadata,
+            **verbosity_flags,
         )
 
     def __push_data_to_multi_cpu__(self) -> NoReturn:
@@ -598,10 +622,10 @@ class Rhadamanthus(FileHandlerCore):
 
     def __min_max_normalize__(self, data: np.ndarray) -> np.ndarray:
         return (data - np.min(data)) / (np.max(data) - np.min(data) + 1e-8)
-    
+
     def __z_score_normalize__(self, data: np.ndarray) -> np.ndarray:
         return (data - np.mean(data)) / (np.std(data) + 1e-8)
-    
+
     def __min_max_normalize_data__(self) -> NoReturn:
         if self._DEBUG:
             print("Min-Max Normalizing data...")
@@ -619,7 +643,7 @@ class Rhadamanthus(FileHandlerCore):
                 }
             else:
                 raise ValueError(f"Data format for key {key} is incorrect.")
-            
+
     def __z_score_normalize_data__(self) -> NoReturn:
         if self._DEBUG:
             print("Z-Score Normalizing data...")
@@ -627,11 +651,11 @@ class Rhadamanthus(FileHandlerCore):
             if isinstance(data, dict) and "features" in data and "dreams" in data:
                 self._data_in[key] = {
                     "features": {
-                        k: self.__z_score_normalize__(v) 
+                        k: self.__z_score_normalize__(v)
                         for k, v in data["features"].items()
                     },
                     "dreams": {
-                        k: self.__z_score_normalize__(v) 
+                        k: self.__z_score_normalize__(v)
                         for k, v in data["dreams"].items()
                     },
                 }
