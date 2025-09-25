@@ -1,8 +1,8 @@
 ## Description: This module contains the implementation of evaluation metrics.
 
 ## Dependencies
-import numpy as np
 import torch
+import numpy as np
 from psutil import cpu_count
 
 # eval method import
