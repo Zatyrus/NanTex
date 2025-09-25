@@ -4,6 +4,7 @@
 import torch
 import numpy as np
 from psutil import cpu_count
+from ezRay import MultiCoreExecutionTool
 
 # eval method import
 
@@ -13,7 +14,6 @@ from typing import List, Dict, Any, NoReturn, Generator, Tuple
 # for progress bar
 # detect jupyter notebook
 from IPython import get_ipython
-
 try:
     ipy_str = str(type(get_ipython()))
     if "zmqshell" in ipy_str:
@@ -32,20 +32,24 @@ from ..Util.pyDialogue import pyDialogue as pD
 ## Main Class
 class Rhadamanthus(FileHandlerCore):
     data_paths_in: Dict[str, List[str]]
+    data_path_out: str
+
     data_in: Dict[str, np.ndarray]
     results: Dict[str, Any]
-    data_path_out: str
+    metadata: Dict[str, Any]
+    metrics: Dict[str, Any]
 
     DEBUG: bool
     disable_tqdm: bool
-    metadata: Dict[str, Any]
-    metrics: Dict[str, Any]
-    mode: str  # has_ground_truth or no_ground_truth
     num_features: int
-    patchsize: Tuple[int, int]  # default patch size
 
     oneiros: Oneiros
-    device: str = "cpu"  # or gpu if available
+    multi_cpu_tool: MultiCoreExecutionTool
+    
+    mode: str  # has_ground_truth or no_ground_truth
+    device: str = "cpu"  # or gpu or multi-cpu if available
+    patchsize: Tuple[int, int]  # default patch size
+
 
     def __init__(
         self,
@@ -134,6 +138,10 @@ class Rhadamanthus(FileHandlerCore):
                 self.__setup_metadata__()
                 self.__arrange_data__()  # <- separate feature and dream data
 
+                # handle multi-cpu setup
+                if self.device == "multi_cpu":
+                    self.__startup_multi_cpu__()
+
                 if self.DEBUG:
                     print("Rhadamanthus Initialized...")
 
@@ -217,50 +225,76 @@ class Rhadamanthus(FileHandlerCore):
 
         # run checks
         self.__run_checks__()
+        
+        # normalize data
+        self.__min_max_normalize_data__()
 
         # cast to tensor
         self.__cast_to_tensor__()
 
         # assure shapes
         self.__ensure_shape__()
+        
+        # send to device
+        self.__send_to_device__()
 
         # map to all data
         match self.device:
             case "cpu":
                 self.results = {
                     key: self.__judge_cpu__(**data)
-                    for key, data in tqdm(self.data_in.items(), disable=self.disable_tqdm, desc="Evaluating CPU...")
+                    for key, data in tqdm(
+                        self.data_in.items(),
+                        disable=self.disable_tqdm,
+                        desc="Evaluating CPU...",
+                    )
                 }
             case "cuda":
                 self.results = {
                     key: self.__judge_cuda__(**data)
-                    for key, data in tqdm(self.data_in.items(), disable=self.disable_tqdm, desc="Evaluating CUDA...")
+                    for key, data in tqdm(
+                        self.data_in.items(),
+                        disable=self.disable_tqdm,
+                        desc="Evaluating CUDA...",
+                    )
                 }
             case "multi_cpu":
+                # upload data to multi-cpu tool
+                self.__push_data_to_multi_cpu__()
+
+                # evaluate using multi-cpu tool
                 self.results = {
-                    key: self.__judge_multi_cpu__(**data)
-                    for key, data in tqdm(self.data_in.items(), disable=self.disable_tqdm, desc="Evaluating Multi-CPU...")
+                    k: v["result"] for k, v in self.multi_cpu_tool.run(Rhadamanthus.__judge_multi_cpu__).items()
                 }
             case _:
                 pass
 
     # %% Data Handler
-    def __judgement_factory__(self, img: torch.Tensor, pred: torch.Tensor) -> Generator:
-        for method_key, method in self.metrics.items():
+    @staticmethod
+    def __base_judgement_worker__(
+        metrics: Dict[str, Any], img: torch.Tensor, pred: torch.Tensor
+    ) -> Generator:
+        for method_key, method in metrics.items():
             if "update" in dir(method):
                 method.update(img, pred)
                 yield method_key, method.compute().item()
             else:
-                yield method_key, method(img, pred)
+                yield method_key, method(img, pred).item()
 
-    def __judge_base__(self, features: torch.Tensor, dreams: torch.Tensor) -> Generator:
-        for i in range(self.num_features):
+    @staticmethod
+    def __judgement__(
+        judgement_worker: Generator,
+        metrics: Dict[str, Any],
+        features: Dict[str, torch.Tensor],
+        dreams: Dict[str, torch.Tensor],
+    ) -> Generator:
+        for i in range(len(features.keys())):
             yield (
                 f"feature_{i}",
                 {
                     k: v
-                    for k, v in self.__judgement_factory__(
-                        features[f"feature_{i}"], dreams[f"dream_{i}"]
+                    for k, v in judgement_worker(
+                        metrics, features[f"feature_{i}"], dreams[f"dream_{i}"]
                     )
                 },
             )
@@ -268,26 +302,18 @@ class Rhadamanthus(FileHandlerCore):
     def __judge_cpu__(
         self, features: torch.Tensor, dreams: torch.Tensor
     ) -> Dict[str, Any]:
-        return dict(self.__judge_base__(features, dreams))
+        return dict(
+            Rhadamanthus.__judgement__(
+                Rhadamanthus.__base_judgement_worker__, self.metrics, features, dreams
+            )
+        )
 
     def __judge_cuda__(self) -> NoReturn:
         raise NotImplementedError("CUDA evaluation not implemented yet.")
 
-    def __judge_multi_cpu__(self) -> NoReturn:
-        raise NotImplementedError("Multi-CPU evaluation not implemented yet.")
-
-    # %% Evaluation Metrics
-    def __MSE__(self, img: np.ndarray, pred: np.ndarray) -> float:
-        pass
-
-    def __PSNR__(self, img: np.ndarray, pred: np.ndarray) -> float:
-        pass
-
-    def __SSIM__(self, img: np.ndarray, pred: np.ndarray) -> float:
-        pass
-
-    def __MSSSIM__(self, img: np.ndarray, pred: np.ndarray) -> float:
-        pass
+    @staticmethod
+    def __judge_multi_cpu__(**kwargs) -> Dict[str, Dict[str, Any]]:
+        return dict(Rhadamanthus.__judgement__(**kwargs))
 
     # %% Helper Functions
     def __read_dream_memory__(self) -> NoReturn:
@@ -365,12 +391,18 @@ class Rhadamanthus(FileHandlerCore):
             else:
                 raise ValueError(f"Data format for key {key} is incorrect.")
 
-    def __sent_to_device__(self) -> NoReturn:
+    def __send_to_device__(self) -> NoReturn:
         if self.DEBUG:
             print("Sending data to device...")
         match self.device:
             case "cpu":
-                pass
+                for key, data in self.data_in.items():
+                    self.data_in[key] = {
+                        "features": {
+                            k: v.to("cpu") for k, v in data["features"].items()
+                        },
+                        "dreams": {k: v.to("cpu") for k, v in data["dreams"].items()},
+                    }
             case "cuda":
                 for key, data in self.data_in.items():
                     self.data_in[key] = {
@@ -386,6 +418,99 @@ class Rhadamanthus(FileHandlerCore):
 
     def __expected_input_dim__(self) -> Tuple[int, int, int]:
         return (1, 1, *self.patchsize)  # (C, B, H, W)
+
+    def __startup_multi_cpu__(self, **kwargs) -> NoReturn:
+        if self.DEBUG:
+            print("Starting up Multi-CPU tool...")
+
+        ## Default Cluster Settings
+        instance_metadata: dict = {"num_cpus": 1, "num_gpus": 0, "ignore_reinit_error": True}
+        if "instance_metadata" in kwargs:
+            instance_metadata.update(kwargs.get("instance_metadata", {}))
+
+        ## Default Task Settings
+        task_metadata: dict = {"num_cpus": 1, "num_gpus": 0, "num_returns": 1}
+        if "task_metadata" in kwargs:
+            task_metadata.update(kwargs.get("task_metadata", {}))
+
+        ## Default Verbosity Settings
+        verbosity_flags: dict = {
+            "AutoArchive": False,
+            "AutoContinue": True,
+            "SingleShot": True,
+            "AutoLaunchDashboard": False,
+            "silent": False,
+            "DEBUG": False,
+        }
+        if "verbosity_flags" in kwargs:
+            verbosity_flags.update(kwargs.get("verbosity_flags", {}))
+
+        ## Assembly
+        RuntimeMetadata: Dict[str, Any] = {
+            "instance_metadata": instance_metadata,
+            "task_metadata": task_metadata,
+        }
+
+        # initialize tool
+        self.multi_cpu_tool = MultiCoreExecutionTool(
+            **RuntimeMetadata, **verbosity_flags,
+        )
+
+    def __push_data_to_multi_cpu__(self) -> NoReturn:
+        if self.DEBUG:
+            print("Pushing data to Multi-CPU tool...")
+        pushed_data = self.data_in
+        # add metrics and the worker function to each case
+        for key in pushed_data.keys():
+            pushed_data[key].update(
+                {
+                    "metrics": self.metrics,
+                    "judgement_worker": Rhadamanthus.__base_judgement_worker__,
+                }
+            )
+        self.multi_cpu_tool.update_data(pushed_data)
+
+    def __min_max_normalize__(self, data: np.ndarray) -> np.ndarray:
+        return (data - np.min(data)) / (np.max(data) - np.min(data) + 1e-8)
+    
+    def __z_score_normalize__(self, data: np.ndarray) -> np.ndarray:
+        return (data - np.mean(data)) / (np.std(data) + 1e-8)
+    
+    def __min_max_normalize_data__(self) -> NoReturn:
+        if self.DEBUG:
+            print("Min-Max Normalizing data...")
+        for key, data in self.data_in.items():
+            if isinstance(data, dict) and "features" in data and "dreams" in data:
+                self.data_in[key] = {
+                    "features": {
+                        k: self.__min_max_normalize__(v).astype(np.float32)
+                        for k, v in data["features"].items()
+                    },
+                    "dreams": {
+                        k: self.__min_max_normalize__(v).astype(np.float32)
+                        for k, v in data["dreams"].items()
+                    },
+                }
+            else:
+                raise ValueError(f"Data format for key {key} is incorrect.")
+            
+    def __z_score_normalize_data__(self) -> NoReturn:
+        if self.DEBUG:
+            print("Z-Score Normalizing data...")
+        for key, data in self.data_in.items():
+            if isinstance(data, dict) and "features" in data and "dreams" in data:
+                self.data_in[key] = {
+                    "features": {
+                        k: self.__z_score_normalize__(v) 
+                        for k, v in data["features"].items()
+                    },
+                    "dreams": {
+                        k: self.__z_score_normalize__(v) 
+                        for k, v in data["dreams"].items()
+                    },
+                }
+            else:
+                raise ValueError(f"Data format for key {key} is incorrect.")
 
     # %% Checks
     def __run_checks__(self) -> NoReturn:
@@ -415,3 +540,13 @@ class Rhadamanthus(FileHandlerCore):
             print("Error: Data not loaded. Please load the data before proceeding.")
             return False
         return True
+
+    # %% Exposed Methods
+    def launch_multi_cpu_dashboard(self) -> NoReturn:
+        if self.DEBUG:
+            print("Launching Multi-CPU Dashboard...")
+        try:
+            self.multi_cpu_tool.launch_dashboard()
+        except Exception as e:
+            print(f"Error: {e}")
+            return
