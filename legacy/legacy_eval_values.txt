@@ -32,3 +32,14 @@ wurzburg
   'SSIM_sewar': nan,
   'MSSSIM': (0.8331714318345574+0j),
   'FSIM': nan}}
+
+würzburg 15.08.2025
+{'feature_0': {'MS_SSIM': 0.82227194,
+               'PeakSignalNoiseRatio': 24.69927,
+               'SSIM': 0.8205853},
+ 'feature_1': {'MS_SSIM': 0.9088851,
+               'PeakSignalNoiseRatio': 24.702394,
+               'SSIM': 0.8705131},
+ 'feature_2': {'MS_SSIM': 0.83293736,
+               'PeakSignalNoiseRatio': 24.701551,
+               'SSIM': 0.80520743}}
