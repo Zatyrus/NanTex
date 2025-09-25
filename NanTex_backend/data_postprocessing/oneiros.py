@@ -1294,7 +1294,7 @@ class Oneiros(FileHandlerCore):
     def __check_model__(self) -> bool:
         if self.DEBUG:
             print("Checking model...")
-        if self.model == None:
+        if self.model is None:
             print("Error: Model not found. Please setup the model before proceeding.")
             return False
         return True
@@ -1330,7 +1330,7 @@ class Oneiros(FileHandlerCore):
     def __check_dream_memory__(self) -> bool:
         if self.DEBUG:
             print("Checking dream memory...")
-        if self.metadata["dream_memory_shape"] == None:
+        if self.metadata["dream_memory_shape"] is None:
             print(
                 "Error: Dream memory not set. Please set the dream memory before proceeding."
             )
@@ -1340,7 +1340,7 @@ class Oneiros(FileHandlerCore):
     def __check_patch_array_shape__(self) -> bool:
         if self.DEBUG:
             print("Checking patch shape...")
-        if self.metadata["patch_array_shape"] == None:
+        if self.metadata["patch_array_shape"] is None:
             print(
                 "Error: Patch size not set. Please set the patch size before proceeding."
             )
