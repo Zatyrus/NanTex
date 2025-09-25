@@ -61,7 +61,7 @@ class BatchFactory:
         Returns:
             BatchFactory: An instance of the BatchFactory class.
         """
-        if config_file_path == None:
+        if config_file_path is None:
             config_file_path = pD.askFILE(
                 "Please provide the path to the configuration file."
             )
@@ -82,7 +82,7 @@ class BatchFactory:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if outpath == None:
+        if outpath is None:
             outpath = pD.askDIR("Please provide the path to the output directory.")
 
         # set the configuration dictionary
@@ -197,7 +197,7 @@ class BatchFactory:
         if self.DEBUG:
             print("Building Data Loader.")
 
-        if val_source == None:
+        if val_source is None:
             raise ValueError("Validation source must be provided.")
 
         ## Retrun PatchRetriever objects for train and test data
@@ -348,7 +348,7 @@ class BatchFactory:
             print("Checking for configuration startup.")
 
         # Check for the configuration file
-        if self.config == None:
+        if self.config is None:
             if not self.__check_config__():
                 self.generate_biolerplate_config_file(outpath=f"{os.getcwd()}/config")
             self.__load_config__(
@@ -389,7 +389,7 @@ class BatchFactory:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if config_path == None:
+        if config_path is None:
             self.__load_config__(
                 pD.askFILE("Please provide the path to the configuration file.")
             )
@@ -436,7 +436,7 @@ class BatchFactory:
             print("Checking configuration.")
 
         try:
-            assert self.config != None
+            assert self.config is not None
             assert type(self.config) == dict
             return True
         except Exception as e:
