@@ -94,7 +94,7 @@ class PatchRetriever(Dataset):
             NoReturn: This function does not return a value.
         """
 
-        if self._gen_seed == None:
+        if self._gen_seed is None:
             self._gen = initialize_generator(self._gen_type)
         else:
             self._gen = seed_generator(self._gen_type, self._gen_seed)
