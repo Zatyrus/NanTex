@@ -25,7 +25,7 @@ except:
 
 # Custom Dependencies
 from ..Util.file_handler_core import FileHandlerCore
-from ..data_postprocessing.Oneiros import Oneiros
+from ..data_postprocessing.oneiros import Oneiros
 from ..Util.pyDialogue import pyDialogue as pD
 
 
