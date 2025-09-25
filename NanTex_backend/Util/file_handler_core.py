@@ -91,7 +91,7 @@ class FileHandlerCore(ABC):
     # %% Path Handling
     def __call_outpath__(self) -> str:
         if (
-            (self.data_path_out == None)
+            (self.data_path_out is None)
             or (self.data_path_out == "null")
             or (self.data_path_out == "")
         ):
@@ -108,7 +108,7 @@ class FileHandlerCore(ABC):
         if self.DEBUG:
             print("Checking outpath...")
         outpath = self.__call_outpath__()
-        if outpath == None:
+        if outpath is None:
             outpath = self.__retrieve_outpath__()
         return outpath
 
@@ -134,7 +134,7 @@ class FileHandlerCore(ABC):
         return pD.askDIR(query_title=f"Please select a {query} directory.")
 
     def __none_to_null__(self, val: str) -> str:
-        if val == None:
+        if val is None:
             return "null"
         return val
 
