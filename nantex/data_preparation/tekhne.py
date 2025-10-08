@@ -26,10 +26,10 @@ except Exception as e:
 # Custom Dependencies
 from ..util.py_dialogue import pyDialogue as pD
 from ..core.file_handler_core import FileHandlerCore
-from ..core.overlay_core import OverlayHelper
+from ..core.tekhne_core import OverlayHelper
 
 
-class OverlayGenerator(FileHandlerCore):
+class Tekhne(FileHandlerCore):
     data_paths_in: Dict[str, List[str]]  # key: data name, value: list of paths
     data_path_out: str  # key: outpath
     data_in: Dict[str, List[np.ndarray]]  # key: data name, value: data <- img_stack
@@ -316,7 +316,7 @@ class OverlayGenerator(FileHandlerCore):
 
     # %% classmethods
     @classmethod
-    def from_explorer(cls, **kwargs) -> "OverlayGenerator":
+    def from_explorer(cls, **kwargs) -> "Tekhne":
         data_paths_in: Dict[str, List[str]] = {}
         feature_count: int = 1
 
@@ -344,7 +344,7 @@ class OverlayGenerator(FileHandlerCore):
         return cls(data_paths_in=data_paths_in, **kwargs)
 
     @classmethod
-    def from_glob(cls, *args, **kwargs) -> "OverlayGenerator":
+    def from_glob(cls, *args, **kwargs) -> "Tekhne":
         data_paths_in: Dict[str, List[str]] = {}
 
         for i, arg in enumerate(args):
@@ -413,7 +413,7 @@ class OverlayGenerator(FileHandlerCore):
             else:
                 print("Ray not initialized...")
                 print(
-                    "Please run 'OverlayGenerator.setup_multi_core()' to initialize Ray..."
+                    "Please run 'Tekhne.setup_multi_core()' to initialize Ray..."
                 )
         else:
             self.__run_single_core__()
@@ -669,7 +669,7 @@ class OverlayGenerator(FileHandlerCore):
 
         ## Shutdown Ray
         print("Multi Core Execution Complete...")
-        print("Use 'OverlayGenerator.shutdown_multi_core()' to shutdown the cluster.")
+        print("Use 'Tekhne.shutdown_multi_core()' to shutdown the cluster.")
 
     def __run_multi_core__(self) -> NoReturn:
         ## run multi core

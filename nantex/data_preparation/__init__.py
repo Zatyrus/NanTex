@@ -1,6 +1,5 @@
 ## Forward imports
-from .overlay_generation import OverlayGenerator as Tekhne
-
+from .tekhne import Tekhne
 
 ## Namespace
 __all__ = ["Tekhne"]
