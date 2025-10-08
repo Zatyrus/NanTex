@@ -28,8 +28,8 @@ except Exception as e:
     from tqdm import tqdm
 
 # Custom Dependencies
-from ..util.py_dialogue import pyDialogue as pD
-from ..core.file_handler_core import FileHandlerCore
+from nantex.util import pyDialogue as pyD
+from nantex.core import FileHandlerCore
 
 
 ## main class
@@ -172,7 +172,7 @@ class Oneiros(FileHandlerCore):
             return None
 
         ## get data paths
-        files_tmp = pD.askFILES(query_title="Please select the data files")
+        files_tmp = pyD.askFILES(query_title="Please select the data files")
         data_paths_in.update(
             {f"dream_{i}": files_tmp[i] for i in range(len(files_tmp))}
         )
@@ -202,7 +202,7 @@ class Oneiros(FileHandlerCore):
         print(f"Randomly selecting {num_selection} samples with ground truth...")
 
         ## get data paths
-        files_tmp = pD.askFILES(query_title="Please select the data files")
+        files_tmp = pyD.askFILES(query_title="Please select the data files")
         data_paths_in.update(
             {f"dream_{i}": files_tmp[i] for i in range(len(files_tmp))}
         )
@@ -1012,7 +1012,7 @@ class Oneiros(FileHandlerCore):
         if self.DEBUG:
             print("Calling new input data...")
         # get data paths
-        files_tmp = pD.askFILES(query_title="Please select the data files")
+        files_tmp = pyD.askFILES(query_title="Please select the data files")
         self.data_paths_in = {f"dream_{i}": files_tmp[i] for i in range(len(files_tmp))}
 
         # reset

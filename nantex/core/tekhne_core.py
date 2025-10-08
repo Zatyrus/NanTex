@@ -9,7 +9,6 @@ from typing import List, Tuple, Dict, NoReturn, Callable, Type
 ## TQDM progress bar
 ## detect jupyter notebook
 from IPython import get_ipython
-
 try:
     ipy_str = str(type(get_ipython()))
     if "zmqshell" in ipy_str:
@@ -20,9 +19,8 @@ except Exception as e:
     print(f"Error occurred while importing tqdm: {e}")
     from tqdm import tqdm
 
-
 ## Class
-class OverlayGeneratorCore:
+class TekhneCore:
     # %% Helper
     @staticmethod
     def __standardize_img__(
@@ -80,14 +78,14 @@ class OverlayGeneratorCore:
         out = [
             data_in[key][value]
             for key, value in punchcard.items()
-            if key not in OverlayGeneratorCore.__ignore_flags__()
+            if key not in TekhneCore.__ignore_flags__()
         ]
 
         # overlay imgs
         out.append(
-            OverlayGeneratorCore.__cast_output_to_dtype__(
-                OverlayGeneratorCore.__standardize_img__(
-                    OverlayGeneratorCore.__overlay__(out),
+            TekhneCore.__cast_output_to_dtype__(
+                TekhneCore.__standardize_img__(
+                    TekhneCore.__overlay__(out),
                     punchcard["perform_standardization"],
                 ),
                 punchcard["dtype_out"],
@@ -104,7 +102,7 @@ class OverlayGeneratorCore:
         out = [
             data_in[key][value]
             for key, value in punchcard.items()
-            if key not in OverlayGeneratorCore.__ignore_flags__()
+            if key not in TekhneCore.__ignore_flags__()
         ]
 
         # rotate imgs
@@ -112,9 +110,9 @@ class OverlayGeneratorCore:
 
         # overlay imgs
         out.append(
-            OverlayGeneratorCore.__cast_output_to_dtype__(
-                OverlayGeneratorCore.__standardize_img__(
-                    OverlayGeneratorCore.__overlay__(out),
+            TekhneCore.__cast_output_to_dtype__(
+                TekhneCore.__standardize_img__(
+                    TekhneCore.__overlay__(out),
                     punchcard["perform_standardization"],
                 ),
                 punchcard["dtype_out"],
@@ -164,7 +162,7 @@ class OverlayGeneratorCore:
             augmented_masks = augmented["masks"]
 
             # check for content
-            if not OverlayGeneratorCore.__check_img_content__(
+            if not TekhneCore.__check_img_content__(
                 augmented_img, punchcard["patch_content_ratio"]
             ):
                 continue
@@ -176,7 +174,7 @@ class OverlayGeneratorCore:
                     patch_collector[i] = np.stack(
                         [
                             *augmented_masks,
-                            OverlayGeneratorCore.__standardize_img__(
+                            TekhneCore.__standardize_img__(
                                 augmented_img, punchcard["perform_standardization"]
                             ),
                         ],
@@ -199,20 +197,20 @@ class OverlayGeneratorCore:
     def __generate_patch_overlay__(
         punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
     ) -> NoReturn:
-        return OverlayGeneratorCore.__generate_patches__(
+        return TekhneCore.__generate_patches__(
             punchcard=punchcard,
             data_in=data_in,
-            overlay_worker=OverlayGeneratorCore.__generate_stack__,
+            overlay_worker=TekhneCore.__generate_stack__,
         )
 
     @staticmethod
     def __generate_patch_rotation__(
         punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
     ) -> NoReturn:
-        return OverlayGeneratorCore.__generate_patches__(
+        return TekhneCore.__generate_patches__(
             punchcard=punchcard,
             data_in=data_in,
-            overlay_worker=OverlayGeneratorCore.__generate_stack_rotation__,
+            overlay_worker=TekhneCore.__generate_stack_rotation__,
         )
 
     @staticmethod
@@ -226,7 +224,7 @@ class OverlayGeneratorCore:
         key, punchcard = list(punchcard.items())[0]
         np.save(
             f"{data_path_out}/{key}.npy",
-            OverlayGeneratorCore.__generate_stack__(punchcard=punchcard, data_in=data_in),
+            TekhneCore.__generate_stack__(punchcard=punchcard, data_in=data_in),
         )
 
         return key
@@ -242,7 +240,7 @@ class OverlayGeneratorCore:
         key, punchcard = list(punchcard.items())[0]
         np.save(
             f"{data_path_out}/{key}.npy",
-            OverlayGeneratorCore.__generate_stack_rotation__(
+            TekhneCore.__generate_stack_rotation__(
                 punchcard=punchcard, data_in=data_in
             ),
         )
@@ -258,8 +256,8 @@ class OverlayGeneratorCore:
     ) -> str:
         # read punchcard
         key, punchcard = list(punchcard.items())[0]
-        OverlayGeneratorCore.__save_patch_stack__(
-            patch_collector=OverlayGeneratorCore.__generate_patch_overlay__(
+        TekhneCore.__save_patch_stack__(
+            patch_collector=TekhneCore.__generate_patch_overlay__(
                 punchcard=punchcard, data_in=data_in
             ),
             data_path_out=data_path_out,
@@ -277,8 +275,8 @@ class OverlayGeneratorCore:
     ) -> str:
         # read punchcard
         key, punchcard = list(punchcard.items())[0]
-        OverlayGeneratorCore.__save_patch_stack__(
-            patch_collector=OverlayGeneratorCore.__generate_patch_rotation__(
+        TekhneCore.__save_patch_stack__(
+            patch_collector=TekhneCore.__generate_patch_rotation__(
                 punchcard=punchcard, data_in=data_in
             ),
             data_path_out=data_path_out,

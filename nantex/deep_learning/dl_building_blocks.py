@@ -24,12 +24,6 @@ except Exception as e:
     print(f"Error occurred while importing tqdm: {e}")
     from tqdm import tqdm
 
-## Custom dependencies
-# from NanTex_backend.deep_learning.train_loss_experimental.ms_ssim_loss import (
-#     SSIM,
-#     MSSSIM,
-# )
-
 ## Additional Metrices
 from pytorch_msssim import SSIM, MS_SSIM
 from torch.nn import MSELoss
@@ -38,8 +32,6 @@ from torch.nn import MSELoss
 from torch.utils.tensorboard import SummaryWriter
 
 ## Setup building blocks for deep learning
-
-
 # %% Model epoch Definition
 def model_step(
     model: torch.nn.Module,
@@ -89,7 +81,6 @@ def prepare_routine(
 
     return log_path, checkpoint_path
 
-
 def normalize_tensor_01(
     tensor: torch.Tensor, min_val: float, max_val: float
 ) -> torch.Tensor:
@@ -97,16 +88,13 @@ def normalize_tensor_01(
         max_val - min_val + 1e-12
     )  # add 1e-12 to avoid negative values and division by zero
 
-
 def denormalize_tensor_01(tensor: torch.Tensor, data_range: float) -> torch.Tensor:
     return tensor * data_range
-
 
 def normalize_tensor_11(
     tensor: torch.Tensor, min_val: float, max_val: float
 ) -> torch.Tensor:
     return (tensor - min_val) / (max_val - min_val) * 2 - 1
-
 
 def denormalize_tensor_11(
     tensor: torch.Tensor, min_val: float, max_val: float

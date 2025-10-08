@@ -21,7 +21,7 @@ except Exception as e:
     from tqdm import tqdm
 
 ## Custom Dependencies
-from ..util.py_dialogue import pyDialogue as pD
+from nantex.util import pyDialogue as pD
 
 
 # %% File Handler

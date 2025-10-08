@@ -1,5 +1,5 @@
 ## Expose submodules
-from oneiros import Oneiros
+from nantex.data_postprocessing.oneiros import Oneiros
 
 __all__ = [
     "Oneiros"

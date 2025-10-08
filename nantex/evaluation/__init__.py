@@ -1,5 +1,5 @@
 ## Expose submodules
-from rhadamanthus import Rhadamanthus
+from nantex.evaluation.rhadamanthus import Rhadamanthus
 
 __all__ = [
     "Rhadamanthus"
