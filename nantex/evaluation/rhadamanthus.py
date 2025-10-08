@@ -21,13 +21,14 @@ try:
         from tqdm.notebook import tqdm
     else:
         from tqdm import tqdm
-except:
+except Exception as e:
+    print(f"Error occurred while importing tqdm: {e}")
     from tqdm import tqdm
 
 # Custom Dependencies
-from ..Util.file_handler_core import FileHandlerCore
+from ..core.file_handler_core import FileHandlerCore
 from ..data_postprocessing.oneiros import Oneiros
-from ..Util.pyDialogue import pyDialogue as pD
+from ..util.py_dialogue import pyDialogue as pD
 
 
 ## Main Class
