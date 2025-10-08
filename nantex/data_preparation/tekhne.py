@@ -134,15 +134,6 @@ class Tekhne(FileHandlerCore):
         self._update_metadata("DEBUG", value)
 
     @property
-    def sleeptime(self):
-        return self._sleeptime
-
-    @sleeptime.setter
-    def sleeptime(self, value):
-        self._sleeptime = value
-        self._update_metadata("sleeptime", value)
-
-    @property
     def dtype_out(self):
         return self._dtype_out
 
@@ -228,11 +219,6 @@ class Tekhne(FileHandlerCore):
             0,
             0,
         )  # will be updated after loading input images
-
-        # handle sleep time
-        self._sleeptime = 0.1
-        if "sleeptime" in kwargs:
-            self._sleeptime = kwargs["sleeptime"]
 
         # handle DEBUG
         self._DEBUG = False
@@ -642,7 +628,7 @@ class Tekhne(FileHandlerCore):
 
         ## listen to progress
         status, finished_states = self.__listen_to_ray_progress__(
-            object_references=[
+            pending_states=[
                 worker.remote(
                     punchcard=punchcard,
                     data_in=data_in_ref,
@@ -875,28 +861,31 @@ class Tekhne(FileHandlerCore):
     # %% Ray
     def __listen_to_ray_progress__(
         self,
-        object_references: List[ray.ObjectRef],
+        pending_states: List[ray.ObjectRef],
         total: int,
     ) -> bool:
         if self._DEBUG:
             print("Setting up progress monitors...")
+            
         ## create progress monitors
-        ray_progress = tqdm(total=total, desc="Workers", position=1, miniters=0)
+        ray_progress = tqdm(total=total, 
+                            desc="Workers completed", 
+                            position=1, 
+                            miniters=1)
+        
         cpu_progress = tqdm(
             total=100,
             desc="CPU usage",
             bar_format="{desc}: {percentage:3.0f}%|{bar}|",
             position=2,
-            miniters=0,
-            mininterval=self._sleeptime,
+            miniters=1,
         )
         mem_progress = tqdm(
             total=psutil.virtual_memory().total,
             desc="RAM usage",
             bar_format="{desc}: {percentage:3.0f}%|{bar}|",
             position=3,
-            miniters=0,
-            mininterval=self._sleeptime,
+            miniters=1,
         )
 
         finished_states = []
@@ -904,13 +893,16 @@ class Tekhne(FileHandlerCore):
         if self._DEBUG:
             print("Listening to Ray Progress...")
         ## listen for progress
-        while len(object_references) > 0:
+        while len(pending_states) > 0:
             try:
                 # get the ready refs
-                finished, object_references = ray.wait(object_references, timeout=8.0)
+                finished, pending_states = ray.wait(pending_states,
+                                                    num_returns=len(pending_states), 
+                                                    timeout = 1e-3, 
+                                                    fetch_local=False)
 
-                data = ray.get(finished)
-                finished_states.extend(data)
+                #data = ray.get(finished)
+                finished_states.extend(finished)
 
                 # update the progress bars
                 mem_progress.n = psutil.virtual_memory().used
@@ -944,8 +936,11 @@ class Tekhne(FileHandlerCore):
 
         if self._DEBUG:
             print("Ray Progress Complete...")
+            
+        # fetch results
+        results = ray.get(finished_states)
 
-        return True, finished_states
+        return True, results
 
     def __check_ray_status__(self) -> NoReturn:
         if self._DEBUG:
@@ -998,7 +993,6 @@ class Tekhne(FileHandlerCore):
             "patchsize": self._patchsize,
             "augment": self._augment,
             "DEBUG": self._DEBUG,
-            "sleeptime": self._sleeptime,
             "patch_content_ratio": self._patch_content_ratio,
             "disable_patch_pbar": self._disable_patch_pbar,
             "disable_auto_standardization": self._disable_auto_standardization,
