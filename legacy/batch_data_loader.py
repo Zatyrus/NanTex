@@ -14,8 +14,8 @@ from torch.utils.data import Dataset
 from typing import Tuple, Union, Dict, List
 
 ## Custom Dependencies
-from ..util.py_dialogue import pyDialogue as pD
-from ..core.bit_gen_core import BitGenCore as BGC
+from nantex.util import pyDialogue as pD
+from nantex.core import BitGenCore as BGC
 
 
 class DataGenerator(Dataset):
