@@ -20,7 +20,8 @@ try:
         from tqdm.notebook import tqdm
     else:
         from tqdm import tqdm
-except:
+except Exception as e:
+    print(f"Error occurred while importing tqdm: {e}")
     from tqdm import tqdm
 
 ## Custom dependencies

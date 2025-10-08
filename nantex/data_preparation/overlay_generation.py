@@ -19,13 +19,14 @@ try:
         from tqdm.notebook import tqdm
     else:
         from tqdm import tqdm
-except:
+except Exception as e:
+    print(f"Error occurred while importing tqdm: {e}")
     from tqdm import tqdm
 
 # Custom Dependencies
-from ..Util.pyDialogue import pyDialogue as pD
-from ..Util.file_handler_core import FileHandlerCore
-from ..Util.overlay_helper import OVERLAY_HELPER
+from ..util.py_dialogue import pyDialogue as pD
+from ..core.file_handler_core import FileHandlerCore
+from ..core.overlay_core import OverlayHelper
 
 
 class OverlayGenerator(FileHandlerCore):
@@ -522,7 +523,7 @@ class OverlayGenerator(FileHandlerCore):
             ) as pbar:
                 # iterate over punchcards
                 for key, punchcard in self.data_punchcards.items():
-                    OVERLAY_HELPER.__save_patch_stack__(
+                    OverlayHelper.__save_patch_stack__(
                         patch_collector=stack_generation(
                             punchcard=punchcard, data_in=self.data_in
                         ),
@@ -562,23 +563,23 @@ class OverlayGenerator(FileHandlerCore):
         if self._mode == "overlay":
             if self._patches:
                 self.__single_core_main__(
-                    stack_generation=OVERLAY_HELPER.__generate_patch_overlay__,
+                    stack_generation=OverlayHelper.__generate_patch_overlay__,
                     desc="Generating Single Core Patch Overlays...",
                 )
             else:
                 self.__single_core_main__(
-                    stack_generation=OVERLAY_HELPER.__generate_stack__,
+                    stack_generation=OverlayHelper.__generate_stack__,
                     desc="Generating Single Core Overlays...",
                 )
         elif self._mode == "rotation":
             if self._patches:
                 self.__single_core_main__(
-                    stack_generation=OVERLAY_HELPER.__generate_patch_rotation__,
+                    stack_generation=OverlayHelper.__generate_patch_rotation__,
                     desc="Generating Single Core Patch Rotations...",
                 )
             else:
                 self.__single_core_main__(
-                    stack_generation=OVERLAY_HELPER.__generate_stack_rotation__,
+                    stack_generation=OverlayHelper.__generate_stack_rotation__,
                     desc="Generating Single Core Rotational Overlays...",
                 )
         else:
@@ -675,20 +676,20 @@ class OverlayGenerator(FileHandlerCore):
         if self._mode == "overlay":
             if self._patches:
                 self.__multi_core_main__(
-                    worker=OVERLAY_HELPER.__multi_core_worker_generate_patch_overlay__
+                    worker=OverlayHelper.__multi_core_worker_generate_patch_overlay__
                 )
             else:
                 self.__multi_core_main__(
-                    worker=OVERLAY_HELPER.__multi_core_worker_generate_stack__
+                    worker=OverlayHelper.__multi_core_worker_generate_stack__
                 )
         elif self._mode == "rotation":
             if self._patches:
                 self.__multi_core_main__(
-                    worker=OVERLAY_HELPER.__multi_core_worker_generate_patch_rotation__
+                    worker=OverlayHelper.__multi_core_worker_generate_patch_rotation__
                 )
             else:
                 self.__multi_core_main__(
-                    worker=OVERLAY_HELPER.__multi_core_worker_generate_stack_rotation__
+                    worker=OverlayHelper.__multi_core_worker_generate_stack_rotation__
                 )
         else:
             warnings.warn("Mode not supported yet...")
