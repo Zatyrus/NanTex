@@ -13,6 +13,7 @@ from typing import Tuple, Union, Dict, List, NoReturn
 from nantex.util import pyDialogue as pyD
 from nantex.batching import Euthenia
 
+
 # %% Convenience Class
 class Harmonia:
     # attributes
@@ -201,7 +202,6 @@ class Harmonia:
             raise ValueError("Validation source must be provided.")
 
         ## wrap kwargs for Euthenia
-        
 
         ## Return Euthenia objects for train and test data
         train_dataset = Euthenia(
@@ -505,5 +505,7 @@ class Harmonia:
             )
         print(f"Number of workers: {n_worker}")
         print(f"Number of logical cores: {psutil.cpu_count(logical=True)}")
-        print("Don't forget to close additional applications to free up more resources.")
+        print(
+            "Don't forget to close additional applications to free up more resources."
+        )
         return n_worker

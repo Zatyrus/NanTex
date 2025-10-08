@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+
 class ConvPass(torch.nn.Module):
     def __init__(self, in_channels, out_channels, kernel_sizes, padding, activation):
         super(ConvPass, self).__init__()
@@ -35,6 +36,7 @@ class ConvPass(torch.nn.Module):
     def forward(self, x):
         return self.conv_pass(x)
 
+
 class Downsample(torch.nn.Module):
     def __init__(self, downsample_factor):
         super(Downsample, self).__init__()
@@ -54,6 +56,7 @@ class Downsample(torch.nn.Module):
                 )
 
         return self.down(x)
+
 
 class Upsample(torch.nn.Module):
     def __init__(

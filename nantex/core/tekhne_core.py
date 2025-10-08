@@ -9,6 +9,7 @@ from typing import List, Tuple, Dict, NoReturn, Callable, Type
 ## TQDM progress bar
 ## detect jupyter notebook
 from IPython import get_ipython
+
 try:
     ipy_str = str(type(get_ipython()))
     if "zmqshell" in ipy_str:
@@ -18,6 +19,7 @@ try:
 except Exception as e:
     print(f"Error occurred while importing tqdm: {e}")
     from tqdm import tqdm
+
 
 ## Class
 class TekhneCore:

@@ -1,7 +1,9 @@
 ## Dependencies
 import numpy as np
+
 # typing
 from typing import List, Dict
+
 
 class BitGenCore:
     gen_types: Dict[str, np.random.Generator] = {

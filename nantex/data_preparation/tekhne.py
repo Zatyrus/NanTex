@@ -412,9 +412,7 @@ class Tekhne(FileHandlerCore):
                 self.__run_multi_core__()
             else:
                 print("Ray not initialized...")
-                print(
-                    "Please run 'Tekhne.setup_multi_core()' to initialize Ray..."
-                )
+                print("Please run 'Tekhne.setup_multi_core()' to initialize Ray...")
         else:
             self.__run_single_core__()
 
