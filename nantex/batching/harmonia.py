@@ -10,11 +10,12 @@ from torch.utils.data import DataLoader
 from typing import Tuple, Union, Dict, List, NoReturn
 
 ## Custom Dependencies
-from ..util import pyDialogue as pyD
-from .patch_retriever import PatchRetriever
+from nantex.util import pyDialogue as pyD
+from nantex.batching import Euthenia
 
 # %% Convenience Class
-class BatchFactory:
+class Harmonia:
+    # attributes
     data_path_container: Dict[str, List[str]]
     config: Dict[str, Union[str, int, float, bool]]
     datatype: str
@@ -31,7 +32,7 @@ class BatchFactory:
         self.__post_init__()
 
     def __post_init__(self) -> NoReturn:
-        """Post-initialization setup for the BatchFactory class.
+        """Post-initialization setup for the Harmonia class.
 
         Returns:
             NoReturn: This function does not return a value.
@@ -49,8 +50,8 @@ class BatchFactory:
     @classmethod
     def from_config(
         cls, config_file_path: str = None, datatype: str = "npy", DEBUG: str = False
-    ) -> "BatchFactory":
-        """Create a BatchFactory instance from a configuration file.
+    ) -> "Harmonia":
+        """Create a Harmonia instance from a configuration file.
 
         Args:
             config_file_path (str, optional): Path to the configuration file. Defaults to None.
@@ -58,7 +59,7 @@ class BatchFactory:
             DEBUG (str, optional): Debug mode flag. Defaults to False.
 
         Returns:
-            BatchFactory: An instance of the BatchFactory class.
+            Harmonia: An instance of the Harmonia class.
         """
         if config_file_path is None:
             config_file_path = pyD.askFILE(
@@ -112,7 +113,7 @@ class BatchFactory:
         }
 
         # Dump the configuration file
-        with open(f"{outpath}/BatchFactory_config.json", "w") as f:
+        with open(f"{outpath}/Harmonia_config.json", "w") as f:
             json.dump(config, f, indent=4, sort_keys=False)
 
     # %% Factory Functions
@@ -138,10 +139,10 @@ class BatchFactory:
 
         if self.DEBUG:
             print("Building Data Loader.")
-        return self.__build_BatchFactory__(**self.config | self.data_path_container)
+        return self.__build_Harmonia__(**self.config | self.data_path_container)
 
     # %% Data Loader Backend
-    def __build_BatchFactory__(
+    def __build_Harmonia__(
         self,
         raw_source: str,
         val_source: str = None,
@@ -199,8 +200,11 @@ class BatchFactory:
         if val_source is None:
             raise ValueError("Validation source must be provided.")
 
-        ## Retrun PatchRetriever objects for train and test data
-        train_dataset = PatchRetriever(
+        ## wrap kwargs for Euthenia
+        
+
+        ## Return Euthenia objects for train and test data
+        train_dataset = Euthenia(
             files=raw_source,
             patchsize=patchsize,
             in_channels=in_channels,
@@ -212,7 +216,7 @@ class BatchFactory:
             num_shuffle=num_shuffle_train,
         )
 
-        val_dataset = PatchRetriever(
+        val_dataset = Euthenia(
             files=val_source,
             patchsize=patchsize,
             in_channels=in_channels,

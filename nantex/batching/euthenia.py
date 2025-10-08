@@ -6,10 +6,10 @@ from torch.utils.data import Dataset
 from typing import Tuple, Dict, List, NoReturn, Any
 
 ## Custom Dependencies
-from ..core.bit_gen_core import BitGenCore as BGC
+from nantex.core import BitGenCore as BGC
 
 
-class PatchRetriever(Dataset):
+class Euthenia(Dataset):
     # attributes
     _files: List[str]
     _patchsize: Tuple[int, int]
@@ -25,7 +25,7 @@ class PatchRetriever(Dataset):
 
     _num_shuffle: int
 
-    "Load, Augment and distribute batches for training & valitation."
+    "Load, Augment and distribute batches for training & validation."
 
     def __init__(
         self,
@@ -38,7 +38,7 @@ class PatchRetriever(Dataset):
         gen_type: str = "DXSM",
         gen_seed: int = None,
         num_shuffle: int = 7,
-    ) -> None:
+    ) -> "Euthenia":
         """Data generator object used in training and validation to load, augment and distribute raw and validation data in batch.
 
         Args:
@@ -188,5 +188,3 @@ class PatchRetriever(Dataset):
             Dict[Any, Any]: Internal state of the object.
         """
         return self.__dict__
-
-    # %% Helper
