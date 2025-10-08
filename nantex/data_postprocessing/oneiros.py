@@ -1373,7 +1373,7 @@ class Oneiros(FileHandlerCore):
             if self.DEBUG:
                 print("Checking number of features...")
             try:
-                for key, dream in self.data_out.items():
+                for dream in self.data_out.values():
                     assert (len(dream) - 1) == self.num_features
             except Exception:
                 print(
