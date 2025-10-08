@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-
 class ConvPass(torch.nn.Module):
     def __init__(self, in_channels, out_channels, kernel_sizes, padding, activation):
         super(ConvPass, self).__init__()
@@ -36,7 +35,6 @@ class ConvPass(torch.nn.Module):
     def forward(self, x):
         return self.conv_pass(x)
 
-
 class Downsample(torch.nn.Module):
     def __init__(self, downsample_factor):
         super(Downsample, self).__init__()
@@ -56,7 +54,6 @@ class Downsample(torch.nn.Module):
                 )
 
         return self.down(x)
-
 
 class Upsample(torch.nn.Module):
     def __init__(
@@ -165,7 +162,7 @@ class Upsample(torch.nn.Module):
         return torch.cat([f_cropped, g_cropped], dim=1)
 
 
-class UNet(torch.nn.Module):
+class UNetCore(torch.nn.Module):
     def __init__(
         self,
         in_channels,
@@ -234,7 +231,7 @@ class UNet(torch.nn.Module):
                 How to pad convolutions. Either 'same' or 'valid' (default).
         """
 
-        super(UNet, self).__init__()
+        super(UNetCore, self).__init__()
 
         self.num_levels = len(downsample_factors) + 1
         self.in_channels = in_channels

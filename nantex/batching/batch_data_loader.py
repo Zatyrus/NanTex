@@ -14,8 +14,8 @@ from torch.utils.data import Dataset
 from typing import Tuple, Union, Dict, List
 
 ## Custom Dependencies
-from ..Util.pyDialogue import pyDialogue as pD
-from ..Util.bit_generator_utils import initialize_generator, seed_generator
+from ..util.py_dialogue import pyDialogue as pD
+from ..core.bit_gen_core import BitGenCore as BGC
 
 
 class DataGenerator(Dataset):
@@ -97,9 +97,9 @@ class DataGenerator(Dataset):
         ## Initialize Bit Generator
         self.__gen: np.random.Generator
         if gen_seed is None:
-            self.__gen = initialize_generator(gen_type)
+            self.__gen = BGC.initialize_generator(gen_type)
         else:
-            self.__gen = seed_generator(gen_type, gen_seed)
+            self.__gen = BGC.seed_generator(gen_type, gen_seed)
 
     def __len__(self) -> int:
         """Denotes the number of files per batch
@@ -526,9 +526,9 @@ class BatchDataLoader_Handler:
         ## Initialize Random Number Generator
         tmp_gen: np.random.Generator
         if gen_seed is None:
-            tmp_gen = initialize_generator(gen_type)
+            tmp_gen = BGC.initialize_generator(gen_type)
         else:
-            tmp_gen = seed_generator(gen_type, gen_seed)
+            tmp_gen = BGC.seed_generator(gen_type, gen_seed)
 
         if self.DEBUG:
             print("Building Data Loader.")

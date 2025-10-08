@@ -22,7 +22,7 @@ except Exception as e:
 
 
 ## Class
-class OverlayCore:
+class OverlayGeneratorCore:
     # %% Helper
     @staticmethod
     def __standardize_img__(
@@ -80,14 +80,14 @@ class OverlayCore:
         out = [
             data_in[key][value]
             for key, value in punchcard.items()
-            if key not in OverlayCore.__ignore_flags__()
+            if key not in OverlayGeneratorCore.__ignore_flags__()
         ]
 
         # overlay imgs
         out.append(
-            OverlayCore.__cast_output_to_dtype__(
-                OverlayCore.__standardize_img__(
-                    OverlayCore.__overlay__(out),
+            OverlayGeneratorCore.__cast_output_to_dtype__(
+                OverlayGeneratorCore.__standardize_img__(
+                    OverlayGeneratorCore.__overlay__(out),
                     punchcard["perform_standardization"],
                 ),
                 punchcard["dtype_out"],
@@ -104,7 +104,7 @@ class OverlayCore:
         out = [
             data_in[key][value]
             for key, value in punchcard.items()
-            if key not in OverlayCore.__ignore_flags__()
+            if key not in OverlayGeneratorCore.__ignore_flags__()
         ]
 
         # rotate imgs
@@ -112,9 +112,9 @@ class OverlayCore:
 
         # overlay imgs
         out.append(
-            OverlayCore.__cast_output_to_dtype__(
-                OverlayCore.__standardize_img__(
-                    OverlayCore.__overlay__(out),
+            OverlayGeneratorCore.__cast_output_to_dtype__(
+                OverlayGeneratorCore.__standardize_img__(
+                    OverlayGeneratorCore.__overlay__(out),
                     punchcard["perform_standardization"],
                 ),
                 punchcard["dtype_out"],
@@ -164,7 +164,7 @@ class OverlayCore:
             augmented_masks = augmented["masks"]
 
             # check for content
-            if not OverlayCore.__check_img_content__(
+            if not OverlayGeneratorCore.__check_img_content__(
                 augmented_img, punchcard["patch_content_ratio"]
             ):
                 continue
@@ -176,7 +176,7 @@ class OverlayCore:
                     patch_collector[i] = np.stack(
                         [
                             *augmented_masks,
-                            OverlayCore.__standardize_img__(
+                            OverlayGeneratorCore.__standardize_img__(
                                 augmented_img, punchcard["perform_standardization"]
                             ),
                         ],
@@ -199,20 +199,20 @@ class OverlayCore:
     def __generate_patch_overlay__(
         punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
     ) -> NoReturn:
-        return OverlayCore.__generate_patches__(
+        return OverlayGeneratorCore.__generate_patches__(
             punchcard=punchcard,
             data_in=data_in,
-            overlay_worker=OverlayCore.__generate_stack__,
+            overlay_worker=OverlayGeneratorCore.__generate_stack__,
         )
 
     @staticmethod
     def __generate_patch_rotation__(
         punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
     ) -> NoReturn:
-        return OverlayCore.__generate_patches__(
+        return OverlayGeneratorCore.__generate_patches__(
             punchcard=punchcard,
             data_in=data_in,
-            overlay_worker=OverlayCore.__generate_stack_rotation__,
+            overlay_worker=OverlayGeneratorCore.__generate_stack_rotation__,
         )
 
     @staticmethod
@@ -226,7 +226,7 @@ class OverlayCore:
         key, punchcard = list(punchcard.items())[0]
         np.save(
             f"{data_path_out}/{key}.npy",
-            OverlayCore.__generate_stack__(punchcard=punchcard, data_in=data_in),
+            OverlayGeneratorCore.__generate_stack__(punchcard=punchcard, data_in=data_in),
         )
 
         return key
@@ -242,7 +242,7 @@ class OverlayCore:
         key, punchcard = list(punchcard.items())[0]
         np.save(
             f"{data_path_out}/{key}.npy",
-            OverlayCore.__generate_stack_rotation__(
+            OverlayGeneratorCore.__generate_stack_rotation__(
                 punchcard=punchcard, data_in=data_in
             ),
         )
@@ -258,8 +258,8 @@ class OverlayCore:
     ) -> str:
         # read punchcard
         key, punchcard = list(punchcard.items())[0]
-        OverlayCore.__save_patch_stack__(
-            patch_collector=OverlayCore.__generate_patch_overlay__(
+        OverlayGeneratorCore.__save_patch_stack__(
+            patch_collector=OverlayGeneratorCore.__generate_patch_overlay__(
                 punchcard=punchcard, data_in=data_in
             ),
             data_path_out=data_path_out,
@@ -277,8 +277,8 @@ class OverlayCore:
     ) -> str:
         # read punchcard
         key, punchcard = list(punchcard.items())[0]
-        OverlayCore.__save_patch_stack__(
-            patch_collector=OverlayCore.__generate_patch_rotation__(
+        OverlayGeneratorCore.__save_patch_stack__(
+            patch_collector=OverlayGeneratorCore.__generate_patch_rotation__(
                 punchcard=punchcard, data_in=data_in
             ),
             data_path_out=data_path_out,

@@ -2,6 +2,7 @@
 import os
 import glob
 import json
+import psutil
 import numpy as np
 from pprint import pprint
 
@@ -9,10 +10,8 @@ from torch.utils.data import DataLoader
 from typing import Tuple, Union, Dict, List, NoReturn
 
 ## Custom Dependencies
-from ..Util.pyDialogue import pyDialogue as pD
+from ..util import pyDialogue as pyD
 from .patch_retriever import PatchRetriever
-from ..Util.tool_collection import detect_workers
-
 
 # %% Convenience Class
 class BatchFactory:
@@ -62,7 +61,7 @@ class BatchFactory:
             BatchFactory: An instance of the BatchFactory class.
         """
         if config_file_path is None:
-            config_file_path = pD.askFILE(
+            config_file_path = pyD.askFILE(
                 "Please provide the path to the configuration file."
             )
 
@@ -83,7 +82,7 @@ class BatchFactory:
             NoReturn: This function does not return a value.
         """
         if outpath is None:
-            outpath = pD.askDIR("Please provide the path to the output directory.")
+            outpath = pyD.askDIR("Please provide the path to the output directory.")
 
         # set the configuration dictionary
         config = {
@@ -108,8 +107,8 @@ class BatchFactory:
             "dtype_masks_out": "float32",  # Data type of the masks.
             "gen_type": "DXSM",  # Type of random number generator.
             "gen_seed": None,  # Seed for the random number generator. Reproducibility is only one integer away. :3
-            "pin_memory": True,  # Flag to pin memory. <- will consume more ressources but speed-up the pdocess.
-            "persistant_workers": True,  # Flag to keep workers alive between runs. <- will consume more ressources but speed-up the pdocess.
+            "pin_memory": True,  # Flag to pin memory. <- will consume more ressources but speed-up the process.
+            "persistant_workers": True,  # Flag to keep workers alive between runs. <- will consume more ressources but speed-up the process.
         }
 
         # Dump the configuration file
@@ -295,7 +294,7 @@ class BatchFactory:
         if self.DEBUG:
             print("Calling raw data source.")
 
-        self.config["raw_source"] = pD.askDIR(
+        self.config["raw_source"] = pyD.askDIR(
             "Please provide the path to the raw data source."
         )
 
@@ -308,7 +307,7 @@ class BatchFactory:
         if self.DEBUG:
             print("Callling validation data source.")
 
-        self.config["val_source"] = pD.askDIR(
+        self.config["val_source"] = pyD.askDIR(
             "Please provide the path to the validation data source."
         )
 
@@ -391,7 +390,7 @@ class BatchFactory:
         """
         if config_path is None:
             self.__load_config__(
-                pD.askFILE("Please provide the path to the configuration file.")
+                pyD.askFILE("Please provide the path to the configuration file.")
             )
         self.__load_config__(config_path)
 
@@ -493,4 +492,14 @@ class BatchFactory:
         Returns:
             int: Number of available CPU cores.
         """
-        return detect_workers()
+        ## Get the number of workers
+        n_worker: int = psutil.cpu_count(logical=False)
+
+        if n_worker < 4:
+            print(
+                "Warning: The number of workers is less than 4. This may lead to significant performance degradation."
+            )
+        print(f"Number of workers: {n_worker}")
+        print(f"Number of logical cores: {psutil.cpu_count(logical=True)}")
+        print("Don't forget to close additional applications to free up more resources.")
+        return n_worker

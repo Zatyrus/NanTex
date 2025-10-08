@@ -7,7 +7,7 @@ import datetime
 from typing import Dict, Any
 
 ## Custom dependencies
-from NanTex_backend.deep_learning.model_src.Unet_setup_torch import UNet
+from ..core.unet_core import UNetCore
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -28,7 +28,7 @@ Unet_config: Dict[str, Any] = {
     "fmap_inc_factors": 3,
     "downsample_factors": [[2, 2], [2, 2], [2, 2], [2, 2]],
     "kernel_size_down": None,  # None means 3x3
-    "kernel_size_up": None,  # None means 3x3
+    "kernel_size_up": None,  # None means 3x3FUNet
     "activation": "ReLU",  # Activation function
     "padding": "same",  # Padding mode
     "num_fmaps_out": None,  # None means in_channels
@@ -58,7 +58,7 @@ misc_config: Dict[str, Any] = {
 ## Assembly Line
 # Main Model
 Unet: torch.nn.Module
-Unet = UNet(**Unet_config)
+Unet = UNetCore(**Unet_config)
 
 # Final Layer
 final_layer: torch.nn.Module

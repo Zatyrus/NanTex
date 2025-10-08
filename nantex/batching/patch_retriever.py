@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 from typing import Tuple, Dict, List, NoReturn, Any
 
 ## Custom Dependencies
-from ..core.bit_gen_core import BitGenCore  # initialize_generator, seed_generator
+from ..core.bit_gen_core import BitGenCore as BGC
 
 
 class PatchRetriever(Dataset):
@@ -95,9 +95,9 @@ class PatchRetriever(Dataset):
         """
 
         if self._gen_seed is None:
-            self._gen = BitGenCore.initialize_generator(self._gen_type)
+            self._gen = BGC.initialize_generator(self._gen_type)
         else:
-            self._gen = BitGenCore.seed_generator(self._gen_type, self._gen_seed)
+            self._gen = BGC.seed_generator(self._gen_type, self._gen_seed)
 
     def __shuffle_paths__(self) -> NoReturn:
         """Shuffle the file paths in the dataset. This method shuffles the file paths a specified number (self._num_shuffle) of times to ensure randomness.
