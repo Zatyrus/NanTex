@@ -26,7 +26,7 @@ except Exception as e:
 # Custom Dependencies
 from ..util.py_dialogue import pyDialogue as pD
 from ..core.file_handler_core import FileHandlerCore
-from ..core.tekhne_core import OverlayHelper
+from ..core.tekhne_core import TekhneCore
 
 
 class Tekhne(FileHandlerCore):
@@ -523,7 +523,7 @@ class Tekhne(FileHandlerCore):
             ) as pbar:
                 # iterate over punchcards
                 for key, punchcard in self.data_punchcards.items():
-                    OverlayHelper.__save_patch_stack__(
+                    TekhneCore.__save_patch_stack__(
                         patch_collector=stack_generation(
                             punchcard=punchcard, data_in=self.data_in
                         ),
@@ -563,23 +563,23 @@ class Tekhne(FileHandlerCore):
         if self._mode == "overlay":
             if self._patches:
                 self.__single_core_main__(
-                    stack_generation=OverlayHelper.__generate_patch_overlay__,
+                    stack_generation=TekhneCore.__generate_patch_overlay__,
                     desc="Generating Single Core Patch Overlays...",
                 )
             else:
                 self.__single_core_main__(
-                    stack_generation=OverlayHelper.__generate_stack__,
+                    stack_generation=TekhneCore.__generate_stack__,
                     desc="Generating Single Core Overlays...",
                 )
         elif self._mode == "rotation":
             if self._patches:
                 self.__single_core_main__(
-                    stack_generation=OverlayHelper.__generate_patch_rotation__,
+                    stack_generation=TekhneCore.__generate_patch_rotation__,
                     desc="Generating Single Core Patch Rotations...",
                 )
             else:
                 self.__single_core_main__(
-                    stack_generation=OverlayHelper.__generate_stack_rotation__,
+                    stack_generation=TekhneCore.__generate_stack_rotation__,
                     desc="Generating Single Core Rotational Overlays...",
                 )
         else:
@@ -676,20 +676,20 @@ class Tekhne(FileHandlerCore):
         if self._mode == "overlay":
             if self._patches:
                 self.__multi_core_main__(
-                    worker=OverlayHelper.__multi_core_worker_generate_patch_overlay__
+                    worker=TekhneCore.__multi_core_worker_generate_patch_overlay__
                 )
             else:
                 self.__multi_core_main__(
-                    worker=OverlayHelper.__multi_core_worker_generate_stack__
+                    worker=TekhneCore.__multi_core_worker_generate_stack__
                 )
         elif self._mode == "rotation":
             if self._patches:
                 self.__multi_core_main__(
-                    worker=OverlayHelper.__multi_core_worker_generate_patch_rotation__
+                    worker=TekhneCore.__multi_core_worker_generate_patch_rotation__
                 )
             else:
                 self.__multi_core_main__(
-                    worker=OverlayHelper.__multi_core_worker_generate_stack_rotation__
+                    worker=TekhneCore.__multi_core_worker_generate_stack_rotation__
                 )
         else:
             warnings.warn("Mode not supported yet...")
