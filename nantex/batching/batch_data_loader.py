@@ -152,13 +152,6 @@ class DataGenerator(Dataset):
         return X, y
 
     def __get_padding(self):
-        # NOT NEEDED IF ALL IMAGES ARE SAME SIZE
-        # if self.__is_val:
-        #     if self.__crop_size % self.__chunks == 0:
-        #         self.__chunks = 4000
-        #     else:
-        #         self.__chunks = self.__crop_size + (self.__crop_size % self.__chunks)
-
         if not self.__is_val:
             if self.__crop_size % self.__chunks == 0:
                 self.__chunks = self.__crop_size
@@ -805,7 +798,7 @@ class BatchDataLoader_Handler:
 
         try:
             assert self.config is not None
-            assert type(self.config) == dict
+            assert type(self.config) is dict
             return True
         except Exception as e:
             print(e)
@@ -819,8 +812,8 @@ class BatchDataLoader_Handler:
             assert all(
                 [key in self.config.keys() for key in ["raw_source", "val_source"]]
             )
-            assert type(self.config["raw_source"]) == str
-            assert type(self.config["val_source"]) == str
+            assert type(self.config["raw_source"]) is str
+            assert type(self.config["val_source"]) is str
             return True
         except Exception as e:
             print(e)
@@ -844,8 +837,8 @@ class BatchDataLoader_Handler:
 
         try:
             assert all([key in self.config.keys() for key in ["raw_aug", "val_aug"]])
-            assert type(self.config["raw_aug"]) == A.Compose
-            assert type(self.config["val_aug"]) == A.Compose
+            assert type(self.config["raw_aug"]) is A.Compose
+            assert type(self.config["val_aug"]) is A.Compose
             return True
         except Exception as e:
             print(e)

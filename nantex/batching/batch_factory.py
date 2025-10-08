@@ -10,7 +10,7 @@ from typing import Tuple, Union, Dict, List, NoReturn
 
 ## Custom Dependencies
 from ..Util.pyDialogue import pyDialogue as pD
-from .PatchRetriever import PatchRetriever
+from .patch_retriever import PatchRetriever
 from ..Util.tool_collection import detect_workers
 
 
@@ -437,7 +437,7 @@ class BatchFactory:
 
         try:
             assert self.config is not None
-            assert type(self.config) == dict
+            assert type(self.config) is dict
             return True
         except Exception as e:
             print(e)
@@ -456,8 +456,8 @@ class BatchFactory:
             assert all(
                 [key in self.config.keys() for key in ["raw_source", "val_source"]]
             )
-            assert type(self.config["raw_source"]) == str
-            assert type(self.config["val_source"]) == str
+            assert type(self.config["raw_source"]) is str
+            assert type(self.config["val_source"]) is str
             assert os.path.exists(self.config["raw_source"])
             assert os.path.exists(self.config["val_source"])
             assert os.path.isdir(self.config["raw_source"])
