@@ -2,10 +2,12 @@
 import sys
 import ray
 import numpy as np
+
+## typing
 from typing import List, Tuple, Dict, NoReturn, Callable, Type
 
-# for progress bar
-# detect jupyter notebook
+## TQDM progress bar
+## detect jupyter notebook
 from IPython import get_ipython
 
 try:
@@ -14,11 +16,13 @@ try:
         from tqdm.notebook import tqdm
     else:
         from tqdm import tqdm
-except:
+except Exception as e:
+    print(f"Error occurred while importing tqdm: {e}")
     from tqdm import tqdm
 
 
-class OVERLAY_HELPER:
+## Class
+class OverlayCore:
     # %% Helper
     @staticmethod
     def __standardize_img__(
@@ -76,14 +80,14 @@ class OVERLAY_HELPER:
         out = [
             data_in[key][value]
             for key, value in punchcard.items()
-            if key not in OVERLAY_HELPER.__ignore_flags__()
+            if key not in OverlayCore.__ignore_flags__()
         ]
 
         # overlay imgs
         out.append(
-            OVERLAY_HELPER.__cast_output_to_dtype__(
-                OVERLAY_HELPER.__standardize_img__(
-                    OVERLAY_HELPER.__overlay__(out),
+            OverlayCore.__cast_output_to_dtype__(
+                OverlayCore.__standardize_img__(
+                    OverlayCore.__overlay__(out),
                     punchcard["perform_standardization"],
                 ),
                 punchcard["dtype_out"],
@@ -100,7 +104,7 @@ class OVERLAY_HELPER:
         out = [
             data_in[key][value]
             for key, value in punchcard.items()
-            if key not in OVERLAY_HELPER.__ignore_flags__()
+            if key not in OverlayCore.__ignore_flags__()
         ]
 
         # rotate imgs
@@ -108,9 +112,9 @@ class OVERLAY_HELPER:
 
         # overlay imgs
         out.append(
-            OVERLAY_HELPER.__cast_output_to_dtype__(
-                OVERLAY_HELPER.__standardize_img__(
-                    OVERLAY_HELPER.__overlay__(out),
+            OverlayCore.__cast_output_to_dtype__(
+                OverlayCore.__standardize_img__(
+                    OverlayCore.__overlay__(out),
                     punchcard["perform_standardization"],
                 ),
                 punchcard["dtype_out"],
@@ -160,7 +164,7 @@ class OVERLAY_HELPER:
             augmented_masks = augmented["masks"]
 
             # check for content
-            if not OVERLAY_HELPER.__check_img_content__(
+            if not OverlayCore.__check_img_content__(
                 augmented_img, punchcard["patch_content_ratio"]
             ):
                 continue
@@ -172,7 +176,7 @@ class OVERLAY_HELPER:
                     patch_collector[i] = np.stack(
                         [
                             *augmented_masks,
-                            OVERLAY_HELPER.__standardize_img__(
+                            OverlayCore.__standardize_img__(
                                 augmented_img, punchcard["perform_standardization"]
                             ),
                         ],
@@ -195,20 +199,20 @@ class OVERLAY_HELPER:
     def __generate_patch_overlay__(
         punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
     ) -> NoReturn:
-        return OVERLAY_HELPER.__generate_patches__(
+        return OverlayCore.__generate_patches__(
             punchcard=punchcard,
             data_in=data_in,
-            overlay_worker=OVERLAY_HELPER.__generate_stack__,
+            overlay_worker=OverlayCore.__generate_stack__,
         )
 
     @staticmethod
     def __generate_patch_rotation__(
         punchcard: Dict[str, Tuple[int, int]], data_in: Dict[str, List[np.ndarray]]
     ) -> NoReturn:
-        return OVERLAY_HELPER.__generate_patches__(
+        return OverlayCore.__generate_patches__(
             punchcard=punchcard,
             data_in=data_in,
-            overlay_worker=OVERLAY_HELPER.__generate_stack_rotation__,
+            overlay_worker=OverlayCore.__generate_stack_rotation__,
         )
 
     @staticmethod
@@ -222,7 +226,7 @@ class OVERLAY_HELPER:
         key, punchcard = list(punchcard.items())[0]
         np.save(
             f"{data_path_out}/{key}.npy",
-            OVERLAY_HELPER.__generate_stack__(punchcard=punchcard, data_in=data_in),
+            OverlayCore.__generate_stack__(punchcard=punchcard, data_in=data_in),
         )
 
         return key
@@ -238,7 +242,7 @@ class OVERLAY_HELPER:
         key, punchcard = list(punchcard.items())[0]
         np.save(
             f"{data_path_out}/{key}.npy",
-            OVERLAY_HELPER.__generate_stack_rotation__(
+            OverlayCore.__generate_stack_rotation__(
                 punchcard=punchcard, data_in=data_in
             ),
         )
@@ -254,8 +258,8 @@ class OVERLAY_HELPER:
     ) -> str:
         # read punchcard
         key, punchcard = list(punchcard.items())[0]
-        OVERLAY_HELPER.__save_patch_stack__(
-            patch_collector=OVERLAY_HELPER.__generate_patch_overlay__(
+        OverlayCore.__save_patch_stack__(
+            patch_collector=OverlayCore.__generate_patch_overlay__(
                 punchcard=punchcard, data_in=data_in
             ),
             data_path_out=data_path_out,
@@ -273,8 +277,8 @@ class OVERLAY_HELPER:
     ) -> str:
         # read punchcard
         key, punchcard = list(punchcard.items())[0]
-        OVERLAY_HELPER.__save_patch_stack__(
-            patch_collector=OVERLAY_HELPER.__generate_patch_rotation__(
+        OverlayCore.__save_patch_stack__(
+            patch_collector=OverlayCore.__generate_patch_rotation__(
                 punchcard=punchcard, data_in=data_in
             ),
             data_path_out=data_path_out,

@@ -16,11 +16,12 @@ try:
         from tqdm.notebook import tqdm
     else:
         from tqdm import tqdm
-except:
+except Exception as e:
+    print(f"Error occurred while importing tqdm: {e}")
     from tqdm import tqdm
 
 ## Custom Dependencies
-from ..Util.pyDialogue import pyDialogue as pD
+from ..util.py_dialogue import pyDialogue as pD
 
 
 # %% File Handler
@@ -84,8 +85,8 @@ class FileHandlerCore(ABC):
             try:
                 print(f"Skipping {args}...")
                 print(f"Skipping {kwargs['file_path']}...")
-            except:
-                print("Skipping...")
+            except Exception as e:
+                print(f"Skipping... \n{e}")
         raise Warning("Data type not supported yet...")
 
     # %% Path Handling
@@ -143,7 +144,7 @@ class FileHandlerCore(ABC):
         try:
             iter(obj)
             return True
-        except:
+        except Exception:
             return False
 
     # %% Metadata Handling
