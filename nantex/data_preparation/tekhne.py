@@ -866,13 +866,12 @@ class Tekhne(FileHandlerCore):
     ) -> bool:
         if self._DEBUG:
             print("Setting up progress monitors...")
-            
+
         ## create progress monitors
-        ray_progress = tqdm(total=total, 
-                            desc="Workers completed", 
-                            position=1, 
-                            miniters=1)
-        
+        ray_progress = tqdm(
+            total=total, desc="Workers completed", position=1, miniters=1
+        )
+
         cpu_progress = tqdm(
             total=100,
             desc="CPU usage",
@@ -896,12 +895,14 @@ class Tekhne(FileHandlerCore):
         while len(pending_states) > 0:
             try:
                 # get the ready refs
-                finished, pending_states = ray.wait(pending_states,
-                                                    num_returns=len(pending_states), 
-                                                    timeout = 1e-3, 
-                                                    fetch_local=False)
+                finished, pending_states = ray.wait(
+                    pending_states,
+                    num_returns=len(pending_states),
+                    timeout=1e-3,
+                    fetch_local=False,
+                )
 
-                #data = ray.get(finished)
+                # data = ray.get(finished)
                 finished_states.extend(finished)
 
                 # update the progress bars
@@ -936,7 +937,7 @@ class Tekhne(FileHandlerCore):
 
         if self._DEBUG:
             print("Ray Progress Complete...")
-            
+
         # fetch results
         results = ray.get(finished_states)
 
