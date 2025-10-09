@@ -14,7 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 ## Hyperparameters
 hyperparameters: Dict[str, Any] = {
     "batch_size": 32,
-    "epochs": 64,
+    "epochs": 16,
     "learning_rate": 5e-4,
     "weight_decay": 0.0,
     "steps_per_epoch": 32,
@@ -37,7 +37,7 @@ Unet_config: Dict[str, Any] = {
 
 final_layer_config: Dict[str, Any] = {
     "in_channels": 32,
-    "out_channels": 3,
+    "out_channels": 2,
     "kernel_size": 1,  # Kernel size for the final convolution
     "padding": "same",
 }
