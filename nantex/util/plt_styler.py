@@ -18,7 +18,7 @@ class pltStyler:
     def default_stylesheet(self) -> None:
         plt.style.use("default")
 
-    def enforece_stylesheet(self) -> None:
+    def enforce_stylesheet(self) -> None:
         # just to have a clean slate
         self.default_stylesheet()
 
