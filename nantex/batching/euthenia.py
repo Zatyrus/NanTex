@@ -24,6 +24,7 @@ class Euthenia(Dataset):
     _gen: np.random.Generator
 
     _num_shuffle: int
+    _file_count_multiplier: int
 
     "Load, Augment and distribute batches for training & validation."
 
@@ -38,6 +39,7 @@ class Euthenia(Dataset):
         gen_type: str = "DXSM",
         gen_seed: int = None,
         num_shuffle: int = 7,
+        file_count_multiplier: int = 1,
     ) -> "Euthenia":
         """Data generator object used in training and validation to load, augment and distribute raw and validation data in batch.
 
@@ -50,7 +52,8 @@ class Euthenia(Dataset):
             dtype_masks_out (np.dtype, optional): Data type of the masks. Defaults to np.float32.
             gen_type (str, optional): Type of random number generator. Defaults to 'DXSM'.
             gen_seed (int, optional): Seed for the random number generator. Defaults to None.
-            is_val (bool, optional): Flag if the object is used for generating validation data. Defaults to False.
+            num_shuffle (int, optional): Number of times to shuffle the file paths. Defaults to 7.
+            file_count_multiplier (int, optional): Multiplier to increase the effective number of files. Defaults to 1.
         """
 
         "Initialization"
@@ -73,7 +76,7 @@ class Euthenia(Dataset):
         self._num_shuffle = num_shuffle
 
         # behavioral flags
-        ...
+        self._file_count_multiplier = file_count_multiplier
 
         # post init routines
         self.__post_init__()
@@ -85,6 +88,7 @@ class Euthenia(Dataset):
             NoReturn: This function does not return a value.
         """
         self.__initialize_generator__()
+        self.__apply_file_count_multiplier__()
         self.__shuffle_paths__()
 
     def __initialize_generator__(self) -> NoReturn:
@@ -98,6 +102,14 @@ class Euthenia(Dataset):
             self._gen = BGC.initialize_generator(self._gen_type)
         else:
             self._gen = BGC.seed_generator(self._gen_type, self._gen_seed)
+            
+    def __apply_file_count_multiplier__(self) -> NoReturn:
+        """Apply the file count multiplier to increase the effective number of files.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
+        self._files = self._files * self._file_count_multiplier
 
     def __shuffle_paths__(self) -> NoReturn:
         """Shuffle the file paths in the dataset. This method shuffles the file paths a specified number (self._num_shuffle) of times to ensure randomness.
