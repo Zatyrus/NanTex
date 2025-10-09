@@ -28,8 +28,8 @@ except Exception as e:
     from tqdm import tqdm
 
 # Custom Dependencies
-from nantex.util import pyDialogue as pyD
-from nantex.core import FileHandlerCore
+from nantex.util.py_dialogue import pyDialogue as pyD
+from nantex.core.file_handler_core import FileHandlerCore
 
 
 ## main class
