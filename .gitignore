@@ -13,6 +13,8 @@ test_in/
 test_out/
 model/
 logs/
+configs/
+model_checkpoints/
 #legacy/
 
 # Distribution / packaging
