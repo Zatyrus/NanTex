@@ -5,13 +5,14 @@ import json
 import psutil
 import numpy as np
 from pprint import pprint
+from warnings import warn
 
 from torch.utils.data import DataLoader
 from typing import Tuple, Union, Dict, List, NoReturn
 
 ## Custom Dependencies
 from nantex.util import pyDialogue as pyD
-from nantex.batching import Euthenia
+from nantex.batching.euthenia import Euthenia
 
 
 # %% Convenience Class
@@ -41,6 +42,7 @@ class Harmonia:
         self.__config_startup__()
         self.__check_datatype__()
         self.__check_config__()
+        self.__warn_if_file_count_modifier_larger_than_one__()
 
         # Check if data sources are available
         if not self.__check_sources__():
@@ -74,7 +76,7 @@ class Harmonia:
 
     # %% Convenience Functions
     @staticmethod
-    def generate_biolerplate_config_file(outpath: str = None) -> NoReturn:
+    def generate_boilerplate_config_file(outpath: str = None) -> NoReturn:
         """Generate a boilerplate configuration file for the data generator object.
 
         Args:
@@ -96,6 +98,7 @@ class Harmonia:
             "val_shuffle_on_draw": True,  # Shuffle validation data between batches.
             "num_shuffle_train": 11,  # Number of times the training data is shuffled on setup
             "num_shuffle_val": 11,  # Number of times the validation data is shuffled on setup
+            "file_count_multiplier": 1,  # Multiplier to increase the effective number of files. Use with caution.
             "patchsize": (
                 256,
                 256,
@@ -158,6 +161,7 @@ class Harmonia:
         num_shuffle_val: int = 7,
         num_train_workers: int = 6,
         num_val_workers: int = 2,
+        file_count_multiplier: int = 1,
         prefetch: int = 8,
         pin_memory: bool = True,
         persistant_workers: bool = True,
@@ -185,6 +189,7 @@ class Harmonia:
             num_shuffle_val (int, optional): Number of times the validation data is shuffled on setup. Defaults to 11.
             num_train_workers (int, optional): Number of workers for training. Defaults to 6.
             num_val_workers (int, optional): Number of workers for validation. Defaults to 2.
+            file_count_multiplier (int, optional): Multiplier to increase the effective number of files. Defaults to 1.
             prefetch (int, optional): Set how many batches should be queued per worker. Defaults to 8.
             pin_memory (bool, optional): Flag to pin memory. Defaults to True.
             persistant_workers (bool, optional): Flag to keep workers alive. Defaults to True.
@@ -214,6 +219,7 @@ class Harmonia:
             gen_type=gen_type,
             gen_seed=gen_seed,
             num_shuffle=num_shuffle_train,
+            file_count_multiplier=file_count_multiplier,
         )
 
         val_dataset = Euthenia(
@@ -226,6 +232,7 @@ class Harmonia:
             gen_type=gen_type,
             gen_seed=gen_seed,
             num_shuffle=num_shuffle_val,
+            file_count_multiplier=file_count_multiplier,
         )
 
         if self.DEBUG:
@@ -353,7 +360,7 @@ class Harmonia:
         # Check for the configuration file
         if self.config is None:
             if not self.__check_config__():
-                self.generate_biolerplate_config_file(outpath=f"{os.getcwd()}/config")
+                self.generate_boilerplate_config_file(outpath=f"{os.getcwd()}/config")
             self.__load_config__(
                 config_path=f"{os.getcwd()}/BatchDataLoader_config.json"
             )
@@ -482,12 +489,34 @@ class Harmonia:
             print("Checking datatype.")
 
         try:
-            assert self.datatype in ["npy", "tif", "tiff", "png", "jpg", "jpeg", "bmp"]
+            assert self.datatype in ["npy"] # "tif", "tiff", "png", "jpg", "jpeg", "bmp"
             return True
         except Exception as e:
             print("Datatype not supported.")
             print(e)
             return False
+        
+    def __warn_if_file_count_modifier_larger_than_one__(self) -> NoReturn:
+        """Raise a warning if the file count modifier is provided in the configuration is larger than 1.
+
+        Returns:
+            NoReturn: This function does not return a value.
+        """
+        if self.DEBUG:
+            print("Checking file count multiplier.")
+
+        try:
+            assert "file_count_multiplier" in self.config.keys()
+            assert type(self.config["file_count_multiplier"]) is int
+            assert self.config["file_count_multiplier"] > 0
+            if self.config["file_count_multiplier"] > 1:
+                if self.DEBUG:
+                    print(f"Warning: Detected file count multiplier of {self.config['file_count_multiplier']} > 1. This may lead to overfitting. Use with caution. It is highly recommended to generate more data instead.")
+                warn("Warning: Detected file count multiplier > 1. This may lead to overfitting. Use with caution. It is highly recommended to generate more data instead.")
+        except Exception as e:
+            if self.DEBUG:
+                print("File count multiplier not provided. Setting to 1.")
+            self.config["file_count_multiplier"] = 1
 
     # %% Helper Functions
     def detect_workers(self) -> int:
