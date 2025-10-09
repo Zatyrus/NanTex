@@ -6,6 +6,7 @@ import warnings
 import itertools
 import webbrowser
 import numpy as np
+from copy import deepcopy
 import albumentations as A
 from typing import List, Tuple, Union, Dict, Any, Optional, NoReturn, Callable
 
@@ -33,6 +34,7 @@ class Tekhne(FileHandlerCore):
     data_paths_in: Dict[str, List[str]]  # key: data name, value: list of paths
     data_path_out: str  # key: outpath
     data_in: Dict[str, List[np.ndarray]]  # key: data name, value: data <- img_stack
+    backup_data_in: Dict[str, List[np.ndarray]]  # key: data name, value: data <- img_stack
     data_punchcards: Dict[
         str, Dict[str, Tuple[int, int]]
     ]  # key: data name, value: dict of data <- input_key, mod_instructions
@@ -203,6 +205,7 @@ class Tekhne(FileHandlerCore):
         self.data_paths_in = data_paths_in
         self.data_path_out = data_path_out
         self.data_in = {}
+        self.backup_data_in = {}
         self.data_punchcards = {}
 
         # internal variables
@@ -299,6 +302,7 @@ class Tekhne(FileHandlerCore):
         super().__post_init__()
         self.__check_input_dtype_on_startup__()  # <- check if the input dtype is supported and if it matches the input images
         self.get_max_input_dimensions()  # <- get max span of input images
+        self.__backup_data_in__()  # <- backup input data for re-processing
 
     # %% classmethods
     @classmethod
@@ -857,6 +861,26 @@ class Tekhne(FileHandlerCore):
 
     def __cast_to_expected_input_dtype__(self, img: np.ndarray) -> np.ndarray:
         return self.__cast_to_dtype__(img=img, dtype=self._dtype_in)
+    
+    def __configure__(self, **kwargs) -> NoReturn:
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                raise KeyError(f"Configuration key '{key}' not found.")
+            
+    def configure(self, **kwargs) -> NoReturn:
+        self.__configure__(**kwargs)
+
+    def __backup_data_in__(self) -> NoReturn:
+        if self._DEBUG:
+            print("Backing up startup data...")
+        self.backup_data_in = deepcopy(self.data_in)
+        
+    def restore_input_data_from_backup(self) -> NoReturn:
+        if self._DEBUG:
+            print("Restoring input data from backup...")
+        self.data_in = deepcopy(self.backup_data_in)
 
     # %% Ray
     def __listen_to_ray_progress__(
