@@ -22,14 +22,66 @@ class Harmonia:
     config: Dict[str, Union[str, int, float, bool]]
     datatype: str
     DEBUG: bool
+    
+    num_possible_train_batches: int
+    num_possible_val_batches: int
+
+    # %% properties
+    @property
+    def data_path_container(self) -> Dict[str, List[str]]:
+        return self._data_path_container
+    @data_path_container.setter
+    def data_path_container(self, value: Dict[str, List[str]]) -> NoReturn:
+        self._data_path_container = value
+        
+    @property
+    def config(self) -> Dict[str, Union[str, int, float, bool]]:
+        return self._config
+    @config.setter
+    def config(self, value: Dict[str, Union[str, int, float, bool]]) -> NoReturn:
+        self._config = value
+        
+    @property
+    def datatype(self) -> str:
+        return self._datatype
+    @datatype.setter
+    def datatype(self, value: str) -> NoReturn:
+        self._datatype = value
+        
+    @property
+    def DEBUG(self) -> bool:
+        return self._DEBUG
+    @DEBUG.setter
+    def DEBUG(self, value: bool) -> NoReturn:
+        self._DEBUG = value
+        
+    @property
+    def num_possible_train_batches(self) -> int:
+        if self._config is not None and self._data_path_container["raw_source"] is not None:
+            return (len(self._data_path_container["raw_source"]) * self._config["file_count_multiplier"]) // self._config["train_batchsize"]
+        else:
+            return 0
+    @num_possible_train_batches.setter
+    def num_possible_train_batches(self, value: int) -> NoReturn:
+        raise NotImplementedError("num_possible_train_batches is a read-only property.")
+        
+    @property
+    def num_possible_val_batches(self) -> int:
+        if self._config is not None and self._data_path_container["val_source"] is not None:
+            return (len(self._data_path_container["val_source"]) * self._config["file_count_multiplier"]) // self._config["val_batchsize"]
+        else:
+            return 0
+    @num_possible_val_batches.setter
+    def num_possible_val_batches(self, value: int) -> NoReturn:
+        raise NotImplementedError("num_possible_val_batches is a read-only property.")
 
     def __init__(
         self, config: Dict = None, datatype: str = "npy", DEBUG: bool = False
     ) -> NoReturn:
-        self.config = config
-        self.DEBUG = DEBUG
-        self.datatype = datatype
-        self.data_path_container = {"raw_source": None, "val_source": None}
+        self._config = config
+        self._DEBUG = DEBUG
+        self._datatype = datatype
+        self._data_path_container = {"raw_source": None, "val_source": None}
 
         self.__post_init__()
 
@@ -46,7 +98,7 @@ class Harmonia:
 
         # Check if data sources are available
         if not self.__check_sources__():
-            if self.DEBUG:
+            if self._DEBUG:
                 print("Data sources are not available.")
             self.__call_sources__()
 
@@ -128,7 +180,7 @@ class Harmonia:
             Tuple[DataLoader, DataLoader]: Raw and validation data loader objects.
         """
         # run checkups
-        if self.DEBUG:
+        if self._DEBUG:
             print("Running checks.")
         try:
             assert self.__check__()
@@ -137,13 +189,13 @@ class Harmonia:
             return None
 
         # fetch data
-        if self.DEBUG:
+        if self._DEBUG:
             print("Fetching data.")
         self.__load_sources__()
 
-        if self.DEBUG:
+        if self._DEBUG:
             print("Building Data Loader.")
-        return self.__build_Harmonia__(**self.config | self.data_path_container)
+        return self.__build_Harmonia__(**self._config | self._data_path_container)
 
     # %% Data Loader Backend
     def __build_Harmonia__(
@@ -200,7 +252,7 @@ class Harmonia:
         Returns:
             Tuple[DataLoader, DataLoader]: Training and validation data loaders.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Building Data Loader.")
 
         if val_source is None:
@@ -235,7 +287,7 @@ class Harmonia:
             file_count_multiplier=file_count_multiplier,
         )
 
-        if self.DEBUG:
+        if self._DEBUG:
             print("Autobatch Data Generators created.")
 
         return (
@@ -270,7 +322,7 @@ class Harmonia:
             NoReturn: This function does not return a value.
         """
         with open(config_path, "r") as f:
-            self.config = json.load(f)
+            self._config = json.load(f)
 
     def __load_sources__(self) -> NoReturn:
         """Load data sources for training and validation.
@@ -278,7 +330,7 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Loading data sources.")
 
         self.__fetch_raw_files__()
@@ -290,7 +342,7 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Loading data sources.")
 
         self.__call_for_raw_source__()
@@ -302,10 +354,10 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Calling raw data source.")
 
-        self.config["raw_source"] = pyD.askDIR(
+        self._config["raw_source"] = pyD.askDIR(
             "Please provide the path to the raw data source."
         )
 
@@ -315,10 +367,10 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Callling validation data source.")
 
-        self.config["val_source"] = pyD.askDIR(
+        self._config["val_source"] = pyD.askDIR(
             "Please provide the path to the validation data source."
         )
 
@@ -328,11 +380,11 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Loading raw data source.")
 
-        self.data_path_container["raw_source"] = glob.glob(
-            f"{self.config['raw_source']}/*.{self.datatype}"
+        self._data_path_container["raw_source"] = glob.glob(
+            f"{self._config['raw_source']}/*.{self._datatype}"
         )
 
     def __fetch_validation_files__(self) -> NoReturn:
@@ -341,11 +393,11 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Loading validation data source.")
 
-        self.data_path_container["val_source"] = glob.glob(
-            f"{self.config['val_source']}/*.{self.datatype}"
+        self._data_path_container["val_source"] = glob.glob(
+            f"{self._config['val_source']}/*.{self._datatype}"
         )
 
     def __config_startup__(self) -> NoReturn:
@@ -354,11 +406,11 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Checking for configuration startup.")
 
         # Check for the configuration file
-        if self.config is None:
+        if self._config is None:
             if not self.__check_config__():
                 self.generate_boilerplate_config_file(outpath=f"{os.getcwd()}/config")
             self.__load_config__(
@@ -372,7 +424,7 @@ class Harmonia:
         Returns:
             Dict: The current configuration dictionary.
         """
-        return self.config
+        return self._config
 
     def pprint_config(self) -> NoReturn:
         """Print the configuration in a pretty format.
@@ -380,7 +432,7 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        pprint(self.config)
+        pprint(self._config)
 
     def print_config(self) -> NoReturn:
         """Print the configuration in a readable format.
@@ -388,7 +440,7 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        print(json.dumps(self.config, indent=4, sort_keys=False))
+        print(json.dumps(self._config, indent=4, sort_keys=False))
 
     def load_config(self, config_path: str = None) -> NoReturn:
         """Load configuration from a file.
@@ -442,12 +494,12 @@ class Harmonia:
         Returns:
             bool: True if the configuration is valid, False otherwise.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Checking configuration.")
 
         try:
-            assert self.config is not None
-            assert type(self.config) is dict
+            assert self._config is not None
+            assert type(self._config) is dict
             return True
         except Exception as e:
             print(e)
@@ -459,21 +511,21 @@ class Harmonia:
         Returns:
             bool: True if the data sources are valid, False otherwise.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Checking data sources.")
 
         try:
             assert all(
-                [key in self.config.keys() for key in ["raw_source", "val_source"]]
+                [key in self._config.keys() for key in ["raw_source", "val_source"]]
             )
-            assert type(self.config["raw_source"]) is str
-            assert type(self.config["val_source"]) is str
-            assert os.path.exists(self.config["raw_source"])
-            assert os.path.exists(self.config["val_source"])
-            assert os.path.isdir(self.config["raw_source"])
-            assert os.path.isdir(self.config["val_source"])
-            assert len(glob.glob(f"{self.config['raw_source']}/*.{self.datatype}")) > 0
-            assert len(glob.glob(f"{self.config['val_source']}/*.{self.datatype}")) > 0
+            assert type(self._config["raw_source"]) is str
+            assert type(self._config["val_source"]) is str
+            assert os.path.exists(self._config["raw_source"])
+            assert os.path.exists(self._config["val_source"])
+            assert os.path.isdir(self._config["raw_source"])
+            assert os.path.isdir(self._config["val_source"])
+            assert len(glob.glob(f"{self._config['raw_source']}/*.{self._datatype}")) > 0
+            assert len(glob.glob(f"{self._config['val_source']}/*.{self._datatype}")) > 0
             return True
         except Exception as e:
             print(e)
@@ -485,11 +537,11 @@ class Harmonia:
         Returns:
             bool: True if the data type is supported, False otherwise.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Checking datatype.")
 
         try:
-            assert self.datatype in ["npy"] # "tif", "tiff", "png", "jpg", "jpeg", "bmp"
+            assert self._datatype in ["npy"] # "tif", "tiff", "png", "jpg", "jpeg", "bmp"
             return True
         except Exception as e:
             print("Datatype not supported.")
@@ -502,21 +554,21 @@ class Harmonia:
         Returns:
             NoReturn: This function does not return a value.
         """
-        if self.DEBUG:
+        if self._DEBUG:
             print("Checking file count multiplier.")
 
         try:
-            assert "file_count_multiplier" in self.config.keys()
-            assert type(self.config["file_count_multiplier"]) is int
-            assert self.config["file_count_multiplier"] > 0
-            if self.config["file_count_multiplier"] > 1:
-                if self.DEBUG:
-                    print(f"Warning: Detected file count multiplier of {self.config['file_count_multiplier']} > 1. This may lead to overfitting. Use with caution. It is highly recommended to generate more data instead.")
+            assert "file_count_multiplier" in self._config.keys()
+            assert type(self._config["file_count_multiplier"]) is int
+            assert self._config["file_count_multiplier"] > 0
+            if self._config["file_count_multiplier"] > 1:
+                if self._DEBUG:
+                    print(f"Warning: Detected file count multiplier of {self._config['file_count_multiplier']} > 1. This may lead to overfitting. Use with caution. It is highly recommended to generate more data instead.")
                 warn("Warning: Detected file count multiplier > 1. This may lead to overfitting. Use with caution. It is highly recommended to generate more data instead.")
         except Exception as e:
-            if self.DEBUG:
+            if self._DEBUG:
                 print("File count multiplier not provided. Setting to 1.")
-            self.config["file_count_multiplier"] = 1
+            self._config["file_count_multiplier"] = 1
 
     # %% Helper Functions
     def detect_workers(self) -> int:
