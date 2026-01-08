@@ -14,6 +14,8 @@ test_out/
 model/
 logs/
 legacy/
+model_checkpoints/
+configs/
 
 # Distribution / packaging
 .Python
