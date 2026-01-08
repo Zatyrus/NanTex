@@ -1,17 +1,42 @@
 # NanTex
  Nanotextural analysis of SMLM data
 
-## Setup Guide
-1. Install Anaconda/Miniconda (just any Cconda distribution).
-2. Open Anaconda Prompt and navigate to the directory where you have downloaded the NanTex repository.
-3. Run the following command to create two new conda environments with all the required packages:
+## Installation Guide
+1. Install [Python Poetry](https://python-poetry.org/docs/).
+2. (Optional) Install [Miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install). Create a new conda environent and activate it.
 ```bash
-conda env create -f NanTex_dev.yml
-conda env create -f NanTex_eval.yml
+conda create -n NanTex python==3.11
+conda actiavte NanTex
 ```
-NOTE: The above command will create two new conda environments named `NanTex_dev` and `NanTex_eval`, which are needed due to version conflicts. The first environment is for development purposes and the second one is for evaluation purposes. You can activate the environment by running the following command:
+3. Navigate to the directory where you have downloaded the NanTex repository.
+4. Run the following command to create a new virtual environent with all the required packages:
 ```bash
-conda activate NanTex_dev/Eval
+poetry install
 ```
-4. Update your GPU Drivers and CUDA Toolkit to the latest version. You can find the latest version supported by PyTorch [here](https://pytorch.org/get-started/locally/).
-5. Activate the dev environment and pull the latest version of torch. You will find the pip command on the PyTorch website (link above).
+NOTE: The deep-learning implementation used in this package is based on PyTorch.
+Based on your available hardware and operating system, you may have to install
+
+1. Update your GPU Drivers and CUDA Toolkit to the latest version. You can find the latest version supported by PyTorch [here](https://pytorch.org/get-started/locally/).
+2. Activate the dev environment and pull the latest version of torch. You will find the pip command on the PyTorch website (link above).
+
+## System Requirements
+
+### Software Dependencies
+
+**Operating System:** \
+Windows 10 (22H2) \
+LINUX (some UX/UI methods might not work as intended)
+
+**Python** \
+python = ">=3.11,<3.14" \
+numpy = "^2.2.0" \
+matplotlib = "^3.10.0" \
+tqdm = "^4.67.1" \
+scikit-image = "^0.25.0" \
+jupyter = "^1.1.1" \
+ipykernel = "^6.29.5" \
+ray = {extras = ["default"], version = "^2.49.1"} \
+ezray = "^1.1.4" \
+pytorch-msssim = "^1.0.0" \
+albumentations = "^2.0.8" \
+torch = {version = "^2.8.0+cu129"}

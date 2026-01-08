@@ -13,21 +13,59 @@ class BitGenCore:
     }
 
     @staticmethod
-    def initialize_generator(gen_type: str) -> None:
+    def initialize_generator(gen_type: str) -> np.random.Generator:
+        """Instantiate numpy BitGenerator based on an input string without seed.
+
+        Args:
+            gen_type (str): BitGenerator type. See numpy documentation.
+
+        Returns:
+            np.random.Generator: Returns the instantiated BitGenerator.
+        """
         return np.random.Generator(BitGenCore.gen_types[gen_type].__call__(seed=None))
 
     @staticmethod
-    def seed_generator(gen_type: str, seed: int) -> None:
+    def seed_generator(gen_type: str, seed: int) -> np.random.Generator:
+        """Instantiate numpy BitGenerator with seed.
+
+        Args:
+            gen_type (str): BitGenerator type. See numpy documentation.
+            seed (int): RNG seed.
+
+        Returns:
+            np.random.Generator: Returns the instantiated BitGenerator.
+        """
         return np.random.Generator(BitGenCore.gen_types[gen_type].__call__(seed=seed))
 
     @staticmethod
-    def spawn_generator(generator: np.random.Generator) -> List[np.random.Generator]:
+    def spawn_generator(generator: np.random.Generator) -> np.random.Generator:
+        """Spawn new child generator from numpy Bit Generator.
+
+        Args:
+            generator (np.random.Generator): Child BitGenerator
+
+        Returns:
+            np.random.Generator: Child BitGenerator
+        """
         return generator.spawn(1)[0]
 
     @staticmethod
     def default_rng() -> np.random.Generator:
+        """Instantiate default BitGenerator (PCG64).
+
+        Returns:
+            np.random.Generator: PCG64 BitGenerator.
+        """
         return np.random.default_rng()
 
     @staticmethod
     def seed_rng(seed: int) -> np.random.Generator:
+        """Instantiate default BitGenerator (PCG64) with seed.
+
+        Args:
+            seed (int): RNG seed.
+
+        Returns:
+            np.random.Generator: PCG64 BitGenerator.
+        """
         return np.random.default_rng(seed=seed)
