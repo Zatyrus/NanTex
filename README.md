@@ -3,21 +3,25 @@
 
 ## Installation Guide
 1. Install [Python Poetry](https://python-poetry.org/docs/).
-2. (Optional) Install [Miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install). Create a new conda environent and activate it.
+2. Install [Miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install). Create a new conda environent and activate it.
 ```bash
 conda create -n NanTex python==3.11
-conda actiavte NanTex
+conda activate NanTex
 ```
 3. Navigate to the directory where you have downloaded the NanTex repository.
-4. Run the following command to create a new virtual environent with all the required packages:
+```bash
+cd /path/to/NanTex
+```
+4. Run the following command with your activated virtual environent to install all the required packages:
 ```bash
 poetry install
 ```
-NOTE: The deep-learning implementation used in this package is based on PyTorch.
-Based on your available hardware and operating system, you may have to install
+5. After that, you are ready to use NanTex. You can run the Jupyter notebooks provided in the `notebooks` folder to get started. This installation retuires an active internet connection to download the necessary packages. It should take around 10-15 minutes depending on your internet speed.
 
-1. Update your GPU Drivers and CUDA Toolkit to the latest version. You can find the latest version supported by PyTorch [here](https://pytorch.org/get-started/locally/).
-2. Activate the dev environment and pull the latest version of torch. You will find the pip command on the PyTorch website (link above).
+**NOTE**: The deep-learning implementation used in this package is based on PyTorch. Based on your available hardware and operating system, you may have to install and or update your PyTorch and CUDA toolkit manually. Follow the steps below if you have a compatible NVIDIA GPU.
+
+1. Update your GPU Drivers and [CUDA Toolkit](https://developer.nvidia.com/cuda/toolkit) to the latest version. You can find the latest version supported by PyTorch [here](https://pytorch.org/get-started/locally/).
+2. Activate the environment and pull the latest version of torch. You will find the pip command on the PyTorch website (link above).
 
 ## System Requirements
 
