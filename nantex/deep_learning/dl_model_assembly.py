@@ -13,12 +13,16 @@ from torch.utils.tensorboard import SummaryWriter
 
 ## Hyperparameters
 hyperparameters: Dict[str, Any] = {
-    "batch_size": 32,
     "epochs": 16,
-    "learning_rate": 5e-4,
-    "weight_decay": 0.0,
-    "steps_per_epoch": 32,
+    "steps_per_epoch": 512,
     "val_per_epoch": 32,
+    "learning_rate": 5e-4,
+    "weight_decay": 1e-6,
+    "data_range": 1,
+    "num_channels": 3,
+    "write_val_per_feature": True,
+    "write_SSIM_MSSSIM_on_the_fly": False,
+    "uses_11_normalization": False,
 }
 
 ## Nework parameters
@@ -37,7 +41,7 @@ Unet_config: Dict[str, Any] = {
 
 final_layer_config: Dict[str, Any] = {
     "in_channels": 32,
-    "out_channels": 2,
+    "out_channels": 3,
     "kernel_size": 1,  # Kernel size for the final convolution
     "padding": "same",
 }
@@ -80,8 +84,8 @@ loss_fn = assembly_config["loss"]()
 optimizer: torch.optim.Optimizer
 optimizer = assembly_config["optimizer"](
     model.parameters(),
-    lr=hyperparameters["learning_rate"],
-    weight_decay=hyperparameters["weight_decay"],
+    lr=hyperparameters.pop("learning_rate", 5e-4),
+    weight_decay=hyperparameters.pop("weight_decay", 0.0),
 )
 
 ## Device
