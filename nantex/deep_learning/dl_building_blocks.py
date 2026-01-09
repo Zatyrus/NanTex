@@ -149,11 +149,11 @@ def train(
 
     # initialize experimental metrics
     MSE_val_Metr: MSELoss
-    
+
     if write_SSIM_MSSSIM_on_the_fly:
         SSIM_Metr: SSIM
         MSSSIM_Metr: MS_SSIM
-        
+
         SSIM_Metr = SSIM(
             data_range=data_range,
             size_average=True,
@@ -168,7 +168,7 @@ def train(
         MSE_val_Metr: MSELoss
         SSIM_val_Metr: SSIM
         MSSSIM_val_Metr: MS_SSIM
-        
+
         MSE_val_Metr = MSELoss()
         SSIM_val_Metr = SSIM(
             data_range=data_range, size_average=True, channel=1, nonnegative_ssim=True
@@ -189,13 +189,13 @@ def train(
 
     # Grab a validation batch
     tmp_val_loader = iter(val_loader)
-    
+
     # update steps per epoch based on dataset size
     steps_per_epoch = min(steps_per_epoch, len(train_loader))
     val_per_epoch = min(val_per_epoch, len(val_loader))
-    
-    # setup 
-    
+
+    # setup
+
     # talk to the user
     print(f"Training for {epochs} epochs, {steps_per_epoch} steps per epoch.")
     print(f"Validating every epoch, {val_per_epoch} steps per validation.")
@@ -216,15 +216,12 @@ def train(
         ) as batch_pbar:
             # Global training loop
             for epoch in range(epochs):
-                
                 # setup epoch counters
                 train_count = 0
                 val_count = 0
-                
-                
+
                 ## Batch loop
                 for feature, label in tmp_loader:
-
                     ## MOVE TO DEVICE
                     # absolutely crucial
                     label: torch.Tensor
@@ -254,7 +251,7 @@ def train(
                         scalar_value=loss_value.cpu().detach().numpy(),
                         global_step=epoch_step_counter,
                     )
-                    
+
                     # extended on the fly evaluation metrics
                     if write_SSIM_MSSSIM_on_the_fly:
                         writer.add_scalar(
@@ -264,7 +261,10 @@ def train(
                         )
                         writer.add_scalar(
                             tag="train/MSSSIM",
-                            scalar_value=MSSSIM_Metr(pred, label).cpu().detach().numpy(),
+                            scalar_value=MSSSIM_Metr(pred, label)
+                            .cpu()
+                            .detach()
+                            .numpy(),
                             global_step=epoch_step_counter,
                         )
 
@@ -276,7 +276,7 @@ def train(
                     batch_pbar.update(1)
                     # write epoch step counter
                     epoch_step_counter += 1
-                    
+
                     # break condition for steps per epoch
                     train_count += 1
                     if train_count >= steps_per_epoch:
@@ -289,9 +289,9 @@ def train(
                 torch.save(
                     net.state_dict(), f"{checkpoint_path}/checkpoint_epoch_{epoch}.pt"
                 )
-                
-                # %%  #### Validation #### %% # <- AFTER EACH EPOCH      
-                
+
+                # %%  #### Validation #### %% # <- AFTER EACH EPOCH
+
                 # reset batch_pbar
                 batch_pbar.reset(total=val_per_epoch)
                 batch_pbar.set_description("Currently validating...")
@@ -299,7 +299,7 @@ def train(
 
                 # set model to eval mode
                 net.eval()
-                
+
                 # per default, we write validation metrices as averages
                 if not write_val_per_feature:
                     # initialize accumulators
@@ -340,7 +340,7 @@ def train(
 
                         # update batch_pbar
                         batch_pbar.update(1)
-                        
+
                         # break condition for val per epoch
                         val_count += 1
                         if val_count >= val_per_epoch:
@@ -422,7 +422,7 @@ def train(
 
                         # update batch_pbar
                         batch_pbar.update(1)
-                        
+
                         # break condition for val per epoch
                         val_count += 1
                         if val_count >= val_per_epoch:
@@ -507,7 +507,7 @@ def train(
 
                 # generate new val loader iterator
                 tmp_val_loader = iter(val_loader)
-                
+
                 # generate new train loader iterator
                 tmp_loader = iter(train_loader)
 

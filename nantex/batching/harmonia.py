@@ -22,7 +22,7 @@ class Harmonia:
     config: Dict[str, Union[str, int, float, bool]]
     datatype: str
     DEBUG: bool
-    
+
     num_possible_train_batches: int
     num_possible_val_batches: int
 
@@ -30,47 +30,65 @@ class Harmonia:
     @property
     def data_path_container(self) -> Dict[str, List[str]]:
         return self._data_path_container
+
     @data_path_container.setter
     def data_path_container(self, value: Dict[str, List[str]]) -> NoReturn:
         self._data_path_container = value
-        
+
     @property
     def config(self) -> Dict[str, Union[str, int, float, bool]]:
         return self._config
+
     @config.setter
     def config(self, value: Dict[str, Union[str, int, float, bool]]) -> NoReturn:
         self._config = value
-        
+
     @property
     def datatype(self) -> str:
         return self._datatype
+
     @datatype.setter
     def datatype(self, value: str) -> NoReturn:
         self._datatype = value
-        
+
     @property
     def DEBUG(self) -> bool:
         return self._DEBUG
+
     @DEBUG.setter
     def DEBUG(self, value: bool) -> NoReturn:
         self._DEBUG = value
-        
+
     @property
     def num_possible_train_batches(self) -> int:
-        if self._config is not None and self._data_path_container["raw_source"] is not None:
-            return (len(self._data_path_container["raw_source"]) * self._config["file_count_multiplier"]) // self._config["train_batchsize"]
+        if (
+            self._config is not None
+            and self._data_path_container["raw_source"] is not None
+        ):
+            return (
+                len(self._data_path_container["raw_source"])
+                * self._config["file_count_multiplier"]
+            ) // self._config["train_batchsize"]
         else:
             return 0
+
     @num_possible_train_batches.setter
     def num_possible_train_batches(self, value: int) -> NoReturn:
         raise NotImplementedError("num_possible_train_batches is a read-only property.")
-        
+
     @property
     def num_possible_val_batches(self) -> int:
-        if self._config is not None and self._data_path_container["val_source"] is not None:
-            return (len(self._data_path_container["val_source"]) * self._config["file_count_multiplier"]) // self._config["val_batchsize"]
+        if (
+            self._config is not None
+            and self._data_path_container["val_source"] is not None
+        ):
+            return (
+                len(self._data_path_container["val_source"])
+                * self._config["file_count_multiplier"]
+            ) // self._config["val_batchsize"]
         else:
             return 0
+
     @num_possible_val_batches.setter
     def num_possible_val_batches(self, value: int) -> NoReturn:
         raise NotImplementedError("num_possible_val_batches is a read-only property.")
@@ -524,8 +542,12 @@ class Harmonia:
             assert os.path.exists(self._config["val_source"])
             assert os.path.isdir(self._config["raw_source"])
             assert os.path.isdir(self._config["val_source"])
-            assert len(glob.glob(f"{self._config['raw_source']}/*.{self._datatype}")) > 0
-            assert len(glob.glob(f"{self._config['val_source']}/*.{self._datatype}")) > 0
+            assert (
+                len(glob.glob(f"{self._config['raw_source']}/*.{self._datatype}")) > 0
+            )
+            assert (
+                len(glob.glob(f"{self._config['val_source']}/*.{self._datatype}")) > 0
+            )
             return True
         except Exception as e:
             print(e)
@@ -541,13 +563,15 @@ class Harmonia:
             print("Checking datatype.")
 
         try:
-            assert self._datatype in ["npy"] # "tif", "tiff", "png", "jpg", "jpeg", "bmp"
+            assert self._datatype in [
+                "npy"
+            ]  # "tif", "tiff", "png", "jpg", "jpeg", "bmp"
             return True
         except Exception as e:
             print("Datatype not supported.")
             print(e)
             return False
-        
+
     def __warn_if_file_count_modifier_larger_than_one__(self) -> NoReturn:
         """Raise a warning if the file count modifier is provided in the configuration is larger than 1.
 
@@ -563,9 +587,13 @@ class Harmonia:
             assert self._config["file_count_multiplier"] > 0
             if self._config["file_count_multiplier"] > 1:
                 if self._DEBUG:
-                    print(f"Warning: Detected file count multiplier of {self._config['file_count_multiplier']} > 1. This may lead to overfitting. Use with caution. It is highly recommended to generate more data instead.")
-                warn("Warning: Detected file count multiplier > 1. This may lead to overfitting. Use with caution. It is highly recommended to generate more data instead.")
-        except Exception as e:
+                    print(
+                        f"Warning: Detected file count multiplier of {self._config['file_count_multiplier']} > 1. This may lead to overfitting. Use with caution. It is highly recommended to generate more data instead."
+                    )
+                warn(
+                    "Warning: Detected file count multiplier > 1. This may lead to overfitting. Use with caution. It is highly recommended to generate more data instead."
+                )
+        except Exception:
             if self._DEBUG:
                 print("File count multiplier not provided. Setting to 1.")
             self._config["file_count_multiplier"] = 1

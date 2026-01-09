@@ -8,7 +8,7 @@ import numpy as np
 
 # Typing
 from torch.utils.data import DataLoader
-from typing import Tuple, Any, NoReturn, Callable
+from typing import Tuple, NoReturn, Callable
 
 # for progress bar
 # detect jupyter notebook
@@ -31,6 +31,7 @@ from torch.nn import MSELoss
 
 from torch.utils.tensorboard import SummaryWriter
 
+
 class Hypnos:
     """
     Hypnos class for training and evaluating deep learning models.
@@ -51,22 +52,26 @@ class Hypnos:
         writer (SummaryWriter): TensorBoard SummaryWriter for logging metrics.
     """
 
-    def __init__(self,
-                 model: torch.nn.Module,
-                 train_loader: DataLoader,
-                 val_loader: DataLoader,
-                 test_loader: DataLoader,
-                 criterion: Callable = MSELoss(),
-                 optimizer: torch.optim.Optimizer = None,
-                 device: torch.device = torch.device('cpu'),
-                 num_epochs: int = 100,
-                 log_dir: str = './logs'):
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        train_loader: DataLoader,
+        val_loader: DataLoader,
+        test_loader: DataLoader,
+        criterion: Callable = MSELoss(),
+        optimizer: torch.optim.Optimizer = None,
+        device: torch.device = torch.device("cpu"),
+        num_epochs: int = 100,
+        log_dir: str = "./logs",
+    ):
         self.model = model.to(device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
         self.criterion = criterion
-        self.optimizer = optimizer if optimizer else torch.optim.Adam(model.parameters())
+        self.optimizer = (
+            optimizer if optimizer else torch.optim.Adam(model.parameters())
+        )
         self.device = device
         self.num_epochs = num_epochs
         self.log_dir = log_dir
@@ -78,7 +83,7 @@ class Hypnos:
 
         # Create log directory if it doesn't exist
         os.makedirs(log_dir, exist_ok=True)
-        
+
     # %% Model epoch Definition
     def model_step(
         model: torch.nn.Module,
@@ -108,7 +113,7 @@ class Hypnos:
             optimizer.step()
 
         return loss_value, predicted
-    
+
     def prepare_routine(
         log_path: str, checkpoint_path: str, *args, **kwargs
     ) -> Tuple[str, str]:
@@ -126,7 +131,7 @@ class Hypnos:
             pathlib.Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
 
         return log_path, checkpoint_path
-        
+
     # %% Training Loop
     def train(
         train_loader: DataLoader,
@@ -184,9 +189,14 @@ class Hypnos:
         if write_val_per_feature:
             MSE_val_Metr = MSELoss()
             SSIM_val_Metr = SSIM(
-                data_range=data_range, size_average=True, channel=1, nonnegative_ssim=True
+                data_range=data_range,
+                size_average=True,
+                channel=1,
+                nonnegative_ssim=True,
             )
-            MSSSIM_val_Metr = MS_SSIM(data_range=data_range, size_average=True, channel=1)
+            MSSSIM_val_Metr = MS_SSIM(
+                data_range=data_range, size_average=True, channel=1
+            )
 
         # send to device
         SSIM_Metr.to(device)
@@ -259,7 +269,10 @@ class Hypnos:
                         )
                         writer.add_scalar(
                             tag="MSSSIM",
-                            scalar_value=MSSSIM_Metr(pred, label).cpu().detach().numpy(),
+                            scalar_value=MSSSIM_Metr(pred, label)
+                            .cpu()
+                            .detach()
+                            .numpy(),
                             global_step=epoch_step_counter,
                         )
 
@@ -277,7 +290,8 @@ class Hypnos:
 
                     # create checkpoints #
                     torch.save(
-                        net.state_dict(), f"{checkpoint_path}/checkpoint_epoch_{epoch}.pt"
+                        net.state_dict(),
+                        f"{checkpoint_path}/checkpoint_epoch_{epoch}.pt",
                     )
 
                     #### Validation ####
@@ -319,7 +333,9 @@ class Hypnos:
                             # denormalize if needed
                             if uses_11_normalization:
                                 label = denormalize_tensor_11(label, 0.0, data_range)
-                                val_pred = denormalize_tensor_11(val_pred, 0.0, data_range)
+                                val_pred = denormalize_tensor_11(
+                                    val_pred, 0.0, data_range
+                                )
 
                             acc_loss.append(loss_value.cpu().detach().numpy())
                             acc_ssim.append(
@@ -382,7 +398,9 @@ class Hypnos:
                             # denormalize if needed
                             if uses_11_normalization:
                                 label = denormalize_tensor_11(label, 0.0, data_range)
-                                val_pred = denormalize_tensor_11(val_pred, 0.0, data_range)
+                                val_pred = denormalize_tensor_11(
+                                    val_pred, 0.0, data_range
+                                )
 
                             acc_ssim.append(
                                 SSIM_Metr(val_pred, label).cpu().detach().numpy()
@@ -419,7 +437,9 @@ class Hypnos:
 
                         # write to tensorboard
                         writer.add_scalar(
-                            tag="val_MSE", scalar_value=np.mean(acc_loss), global_step=epoch
+                            tag="val_MSE",
+                            scalar_value=np.mean(acc_loss),
+                            global_step=epoch,
                         )
                         writer.add_scalar(
                             tag="val_SSIM",
@@ -462,12 +482,18 @@ class Hypnos:
                     if np.mean(acc_msssim) > optimal_msssim:
                         optimal_msssim = np.mean(acc_msssim)
                         torch.save(
-                            net.state_dict(), f"{checkpoint_path}/model_optimal_msssim.pt"
+                            net.state_dict(),
+                            f"{checkpoint_path}/model_optimal_msssim.pt",
                         )
                     if write_val_per_feature:
                         for i in range(num_channels):
-                            if np.mean(collector["val_MSE"][i]) < optimal_feature_loss[i]:
-                                optimal_feature_loss[i] = np.mean(collector["val_MSE"][i])
+                            if (
+                                np.mean(collector["val_MSE"][i])
+                                < optimal_feature_loss[i]
+                            ):
+                                optimal_feature_loss[i] = np.mean(
+                                    collector["val_MSE"][i]
+                                )
                                 torch.save(
                                     net.state_dict(),
                                     f"{checkpoint_path}/model_best_channel_{i}.pt",
@@ -498,7 +524,7 @@ class Hypnos:
 
         ## Save final model
         torch.save(net.state_dict(), f"{checkpoint_path}/model_final.pt")
-    
+
     # %% Helper Functions
     def normalize_tensor_01(
         tensor: torch.Tensor, min_val: float, max_val: float
@@ -519,4 +545,3 @@ class Hypnos:
         tensor: torch.Tensor, min_val: float, max_val: float
     ) -> torch.Tensor:
         return (tensor + 1) / 2 * (max_val - min_val) + min_val
-        

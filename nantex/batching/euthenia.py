@@ -25,37 +25,41 @@ class Euthenia(Dataset):
 
     _num_shuffle: int
     _file_count_multiplier: int
-    
-    #%% properties
+
+    # %% properties
     @property
     def files(self) -> List[str]:
         return self._files
+
     @files.setter
     def files(self, value: List[str]) -> NoReturn:
         self._files = value
         self.__post_init__()
-        
+
     @property
     def patchsize(self) -> Tuple[int, int]:
         return self._patchsize
+
     @patchsize.setter
     def patchsize(self, value: Tuple[int, int]) -> NoReturn:
         self._patchsize = value
-    
+
     @property
     def in_channels(self) -> int:
         return self._in_channels
+
     @in_channels.setter
     def in_channels(self, value: int) -> NoReturn:
         self._in_channels = value
-    
+
     @property
     def out_channels(self) -> int:
         return self._out_channels
+
     @out_channels.setter
     def out_channels(self, value: int) -> NoReturn:
         self._out_channels = value
-    
+
     @property
     def dtype_overlay_out(self) -> np.dtype:
         return self._dtype_overlay_out
@@ -71,34 +75,38 @@ class Euthenia(Dataset):
     @dtype_masks_out.setter
     def dtype_masks_out(self, value: np.dtype) -> NoReturn:
         self._dtype_masks_out = value
-        
+
     @property
     def gen_type(self) -> str:
         return self._gen_type
+
     @gen_type.setter
     def gen_type(self, value: str) -> NoReturn:
         self._gen_type = value
         self.__initialize_generator__()
-    
+
     @property
     def gen_seed(self) -> int:
         return self._gen_seed
+
     @gen_seed.setter
     def gen_seed(self, value: int) -> NoReturn:
         self._gen_seed = value
         self.__initialize_generator__()
-        
+
     @property
     def num_shuffle(self) -> int:
         return self._num_shuffle
+
     @num_shuffle.setter
     def num_shuffle(self, value: int) -> NoReturn:
         self._num_shuffle = value
         self.__shuffle_paths__()
-        
+
     @property
     def file_count_multiplier(self) -> int:
         return self._file_count_multiplier
+
     @file_count_multiplier.setter
     def file_count_multiplier(self, value: int) -> NoReturn:
         self._file_count_multiplier = value
@@ -181,7 +189,7 @@ class Euthenia(Dataset):
             self._gen = BGC.initialize_generator(self._gen_type)
         else:
             self._gen = BGC.seed_generator(self._gen_type, self._gen_seed)
-            
+
     def __apply_file_count_multiplier__(self) -> NoReturn:
         """Apply the file count multiplier to increase the effective number of files.
 

@@ -35,7 +35,9 @@ class Tekhne(FileHandlerCore):
     data_paths_in: Dict[str, List[str]]  # key: data name, value: list of paths
     data_path_out: str  # key: outpath
     data_in: Dict[str, List[np.ndarray]]  # key: data name, value: data <- img_stack
-    backup_data_in: Dict[str, List[np.ndarray]]  # key: data name, value: data <- img_stack
+    backup_data_in: Dict[
+        str, List[np.ndarray]
+    ]  # key: data name, value: data <- img_stack
     data_punchcards: Dict[
         str, Dict[str, Tuple[int, int]]
     ]  # key: data name, value: dict of data <- input_key, mod_instructions
@@ -862,14 +864,14 @@ class Tekhne(FileHandlerCore):
 
     def __cast_to_expected_input_dtype__(self, img: np.ndarray) -> np.ndarray:
         return self.__cast_to_dtype__(img=img, dtype=self._dtype_in)
-    
+
     def __configure__(self, **kwargs) -> NoReturn:
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
             else:
                 raise KeyError(f"Configuration key '{key}' not found.")
-            
+
     def configure(self, **kwargs) -> NoReturn:
         self.__configure__(**kwargs)
 
@@ -877,25 +879,32 @@ class Tekhne(FileHandlerCore):
         if self._DEBUG:
             print("Backing up startup data...")
         self.backup_data_in = deepcopy(self.data_in)
-        
+
     def restore_input_data_from_backup(self) -> NoReturn:
         if self._DEBUG:
             print("Restoring input data from backup...")
         self.data_in = deepcopy(self.backup_data_in)
-        
+
     def __get_num_img_per_feature__(self) -> NoReturn:
         if self._DEBUG:
             print("Calculating number of images per feature...")
-        return {
-            key: len(value) for key, value in self.data_in.items()
-        }
+        return {key: len(value) for key, value in self.data_in.items()}
 
-    def __estimate_num_output__(self, num_patches:int = None, rotation:bool= None, num_img_per_feature:Dict[str,int]= None) -> int:
+    def __estimate_num_output__(
+        self,
+        num_patches: int = None,
+        rotation: bool = None,
+        num_img_per_feature: Dict[str, int] = None,
+    ) -> int:
         """Calculate number of permutations"""
         if not num_patches:
             num_patches = 1
         if rotation:
-            return np.prod([v for v in num_img_per_feature.values()]) * 4**len(num_img_per_feature) * num_patches
+            return (
+                np.prod([v for v in num_img_per_feature.values()])
+                * 4 ** len(num_img_per_feature)
+                * num_patches
+            )
         return np.prod([v for v in num_img_per_feature.values()]) * num_patches
 
     def estimate_number_of_outputs(self, **kwargs) -> NoReturn:
@@ -911,13 +920,21 @@ class Tekhne(FileHandlerCore):
         num_outputs = self.__estimate_num_output__(**kwargs)
 
         # talk to user
-        print(f"Current configuration:")
+        print("Current configuration:")
         print(f"  Number of patches: {kwargs['num_patches']}")
         print(f"  Rotation: {kwargs['rotation']}")
         print(f"  Number of images per feature: {kwargs['num_img_per_feature']}")
-        print(f"Generated number of outputs: " + pyColors.BOLD + f"{num_outputs}" + pyColors.BOLD + ".")
+        print(
+            "Generated number of outputs: "
+            + pyColors.BOLD
+            + f"{num_outputs}"
+            + pyColors.BOLD
+            + "."
+        )
         print()
-        print("To adjust the configuration, please use the 'Tekhne.configure()' method.")
+        print(
+            "To adjust the configuration, please use the 'Tekhne.configure()' method."
+        )
 
     # %% Ray
     def __listen_to_ray_progress__(
