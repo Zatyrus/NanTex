@@ -2,11 +2,20 @@
  Nanotextural analysis of SMLM data
 
 ## Installation Guide
+**NOTE**: The deep-learning implementation used in this package is based on PyTorch. Based on your available hardware and operating system, you may have to install and or update your PyTorch and CUDA toolkit manually. Follow the steps below if you have a compatible NVIDIA GPU.
+
+### Package Installation using Poetry and Conda
 1. Install [Python Poetry](https://python-poetry.org/docs/).
-2. Install [Miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install). Create a new conda environent and activate it.
+2. Install [Miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install). Create a new conda environent and activate it. Then download the patchify module by running the following commands:
 ```bash
 conda create -n NanTex python==3.11
 conda activate NanTex
+pip install patchify
+```
+**Note**: It is possible that pip throws an error as patchify is deprecated and thus stll depending on an older numpy version. In that case, just install patchify and update numpy afterwards:
+```bash
+pip install patchify
+pip install --upgrade numpy
 ```
 3. Navigate to the directory where you have downloaded the NanTex repository.
 ```bash
@@ -18,10 +27,16 @@ poetry install
 ```
 5. After that, you are ready to use NanTex. You can run the Jupyter notebooks provided in the `notebooks` folder to get started. This installation retuires an active internet connection to download the necessary packages. It should take around 10-15 minutes depending on your internet speed.
 
-**NOTE**: The deep-learning implementation used in this package is based on PyTorch. Based on your available hardware and operating system, you may have to install and or update your PyTorch and CUDA toolkit manually. Follow the steps below if you have a compatible NVIDIA GPU.
+### Enable GPU Acceleration (Recommended)
+1. Check your GPU compatibility with PyTorch and CUDA [here](https://pytorch.org/get-started/locally/). If your GPU is compatible, follow the steps below.
+2. Check your current CUDA version by running the following command in your terminal or command prompt:
+```bash
+nvcc --version
+```
+3. If needed, update your GPU Drivers and [CUDA Toolkit](https://developer.nvidia.com/cuda/toolkit) to the latest version **supported** by [PyTorch](https://pytorch.org/get-started/locally/).
+4. Activate the environment and pull the latest version of torch. You will find the pip command on the PyTorch website (link above).
 
-1. Update your GPU Drivers and [CUDA Toolkit](https://developer.nvidia.com/cuda/toolkit) to the latest version. You can find the latest version supported by PyTorch [here](https://pytorch.org/get-started/locally/).
-2. Activate the environment and pull the latest version of torch. You will find the pip command on the PyTorch website (link above).
+
 
 ## System Requirements
 
