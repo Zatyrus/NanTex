@@ -79,7 +79,6 @@ class Hypnos:
         # Create log directory if it doesn't exist
         os.makedirs(log_dir, exist_ok=True)
         
-    # %% Model Components
     # %% Model epoch Definition
     def model_step(
         model: torch.nn.Module,
