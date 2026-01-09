@@ -123,6 +123,7 @@ def train(
     num_channels: int = 3,
     data_range: float = 1.0,
     write_val_per_feature: bool = False,
+    write_SSIM_MSSSIM_on_the_fly: bool = False,
     uses_11_normalization: bool = False,
 ) -> NoReturn:
     # prepare routine
@@ -148,20 +149,26 @@ def train(
 
     # initialize experimental metrics
     MSE_val_Metr: MSELoss
-    SSIM_Metr: SSIM
-    MSSSIM_Metr: MS_SSIM
-
-    SSIM_Metr = SSIM(
-        data_range=data_range,
-        size_average=True,
-        channel=num_channels,
-        nonnegative_ssim=True,
-    )
-    MSSSIM_Metr = MS_SSIM(
-        data_range=data_range, size_average=True, channel=num_channels
-    )
+    
+    if write_SSIM_MSSSIM_on_the_fly:
+        SSIM_Metr: SSIM
+        MSSSIM_Metr: MS_SSIM
+        
+        SSIM_Metr = SSIM(
+            data_range=data_range,
+            size_average=True,
+            channel=num_channels,
+            nonnegative_ssim=True,
+        )
+        MSSSIM_Metr = MS_SSIM(
+            data_range=data_range, size_average=True, channel=num_channels
+        )
 
     if write_val_per_feature:
+        MSE_val_Metr: MSELoss
+        SSIM_val_Metr: SSIM
+        MSSSIM_val_Metr: MS_SSIM
+        
         MSE_val_Metr = MSELoss()
         SSIM_val_Metr = SSIM(
             data_range=data_range, size_average=True, channel=1, nonnegative_ssim=True
@@ -169,8 +176,9 @@ def train(
         MSSSIM_val_Metr = MS_SSIM(data_range=data_range, size_average=True, channel=1)
 
     # send to device
-    SSIM_Metr.to(device)
-    MSSSIM_Metr.to(device)
+    if write_SSIM_MSSSIM_on_the_fly:
+        SSIM_Metr.to(device)
+        MSSSIM_Metr.to(device)
     if write_val_per_feature:
         MSE_val_Metr.to(device)
         SSIM_val_Metr.to(device)
@@ -181,6 +189,16 @@ def train(
 
     # Grab a validation batch
     tmp_val_loader = iter(val_loader)
+    
+    # update steps per epoch based on dataset size
+    steps_per_epoch = min(steps_per_epoch, len(train_loader))
+    val_per_epoch = min(val_per_epoch, len(val_loader))
+    
+    # setup 
+    
+    # talk to the user
+    print(f"Training for {epochs} epochs, {steps_per_epoch} steps per epoch.")
+    print(f"Validating every epoch, {val_per_epoch} steps per validation.")
 
     with tqdm(
         total=epochs,
@@ -198,10 +216,14 @@ def train(
         ) as batch_pbar:
             # Global training loop
             for epoch in range(epochs):
+                
+                # setup epoch counters
+                train_count = 0
+                val_count = 0
+                
+                
                 ## Batch loop
-                for _ in range(steps_per_epoch):
-                    # Grab a training batch
-                    feature, label = next(tmp_loader)
+                for feature, label in tmp_loader:
 
                     ## MOVE TO DEVICE
                     # absolutely crucial
@@ -228,20 +250,23 @@ def train(
 
                     # Write to tensorboard
                     writer.add_scalar(
-                        tag="MSE",
+                        tag="train/MSE",
                         scalar_value=loss_value.cpu().detach().numpy(),
                         global_step=epoch_step_counter,
                     )
-                    writer.add_scalar(
-                        tag="SSIM",
-                        scalar_value=SSIM_Metr(pred, label).cpu().detach().numpy(),
-                        global_step=epoch_step_counter,
-                    )
-                    writer.add_scalar(
-                        tag="MSSSIM",
-                        scalar_value=MSSSIM_Metr(pred, label).cpu().detach().numpy(),
-                        global_step=epoch_step_counter,
-                    )
+                    
+                    # extended on the fly evaluation metrics
+                    if write_SSIM_MSSSIM_on_the_fly:
+                        writer.add_scalar(
+                            tag="train/SSIM",
+                            scalar_value=SSIM_Metr(pred, label).cpu().detach().numpy(),
+                            global_step=epoch_step_counter,
+                        )
+                        writer.add_scalar(
+                            tag="train/MSSSIM",
+                            scalar_value=MSSSIM_Metr(pred, label).cpu().detach().numpy(),
+                            global_step=epoch_step_counter,
+                        )
 
                     # Handle progress
                     pbar.set_description(
@@ -251,6 +276,11 @@ def train(
                     batch_pbar.update(1)
                     # write epoch step counter
                     epoch_step_counter += 1
+                    
+                    # break condition for steps per epoch
+                    train_count += 1
+                    if train_count >= steps_per_epoch:
+                        break
 
                 # format batch_pbar
                 batch_pbar.set_description("Checkpoint reached ...")
@@ -259,8 +289,9 @@ def train(
                 torch.save(
                     net.state_dict(), f"{checkpoint_path}/checkpoint_epoch_{epoch}.pt"
                 )
-
-                #### Validation ####
+                
+                # %%  #### Validation #### %% # <- AFTER EACH EPOCH      
+                
                 # reset batch_pbar
                 batch_pbar.reset(total=val_per_epoch)
                 batch_pbar.set_description("Currently validating...")
@@ -268,7 +299,7 @@ def train(
 
                 # set model to eval mode
                 net.eval()
-
+                
                 # per default, we write validation metrices as averages
                 if not write_val_per_feature:
                     # initialize accumulators
@@ -276,9 +307,7 @@ def train(
                     acc_ssim = []
                     acc_msssim = []
 
-                    for _ in range(val_per_epoch):
-                        feature, label = next(tmp_val_loader)
-
+                    for feature, label in tmp_val_loader:
                         ## MOVE TO DEVICE
                         label: torch.Tensor
                         feature: torch.Tensor
@@ -309,10 +338,13 @@ def train(
                             MSSSIM_Metr(val_pred, label).cpu().detach().numpy()
                         )
 
-                        ## ON THE FLY VALIDATION HOOK ##
-
                         # update batch_pbar
                         batch_pbar.update(1)
+                        
+                        # break condition for val per epoch
+                        val_count += 1
+                        if val_count >= val_per_epoch:
+                            break
 
                 # we can also write them per feature
                 if write_val_per_feature:
@@ -327,9 +359,7 @@ def train(
                         collector["val_SSIM"][i] = []
                         collector["val_MSSSIM"][i] = []
 
-                    for _ in range(val_per_epoch):
-                        feature, label = next(tmp_val_loader)
-
+                    for feature, label in tmp_val_loader:
                         ## MOVE TO DEVICE
                         label: torch.Tensor
                         feature: torch.Tensor
@@ -392,6 +422,11 @@ def train(
 
                         # update batch_pbar
                         batch_pbar.update(1)
+                        
+                        # break condition for val per epoch
+                        val_count += 1
+                        if val_count >= val_per_epoch:
+                            break
 
                     # reset batch_pbar
                     batch_pbar.colour = "green"
@@ -399,15 +434,15 @@ def train(
 
                     # write to tensorboard
                     writer.add_scalar(
-                        tag="val_MSE", scalar_value=np.mean(acc_loss), global_step=epoch
+                        tag="val/MSE", scalar_value=np.mean(acc_loss), global_step=epoch
                     )
                     writer.add_scalar(
-                        tag="val_SSIM",
+                        tag="val/SSIM",
                         scalar_value=np.mean(acc_ssim),
                         global_step=epoch,
                     )
                     writer.add_scalar(
-                        tag="val_MSSSIM",
+                        tag="val/MSSSIM",
                         scalar_value=np.mean(acc_msssim),
                         global_step=epoch,
                     )
@@ -415,17 +450,17 @@ def train(
                     # write feature specific
                     for i in range(num_channels):
                         writer.add_scalar(
-                            tag=f"val_MSE/channel_{i}",
+                            tag=f"val/MSE/channel_{i}",
                             scalar_value=np.mean(collector["val_MSE"][i]),
                             global_step=epoch,
                         )
                         writer.add_scalar(
-                            tag=f"val_SSIM/channel_{i}",
+                            tag=f"val/SSIM/channel_{i}",
                             scalar_value=np.mean(collector["val_SSIM"][i]),
                             global_step=epoch,
                         )
                         writer.add_scalar(
-                            tag=f"val_MSSSIM/channel_{i}",
+                            tag=f"val/MSSSIM/channel_{i}",
                             scalar_value=np.mean(collector["val_MSSSIM"][i]),
                             global_step=epoch,
                         )
@@ -469,6 +504,12 @@ def train(
                 batch_pbar.reset(total=steps_per_epoch)
                 batch_pbar.set_description("Processing batch...")
                 batch_pbar.colour = "dodgerblue"
+
+                # generate new val loader iterator
+                tmp_val_loader = iter(val_loader)
+                
+                # generate new train loader iterator
+                tmp_loader = iter(train_loader)
 
                 # Reset model to training mode
                 net.train()
