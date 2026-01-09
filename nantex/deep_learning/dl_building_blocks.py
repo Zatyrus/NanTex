@@ -150,19 +150,18 @@ def train(
     # initialize experimental metrics
     MSE_val_Metr: MSELoss
 
-    if write_SSIM_MSSSIM_on_the_fly:
-        SSIM_Metr: SSIM
-        MSSSIM_Metr: MS_SSIM
+    SSIM_Metr: SSIM
+    MSSSIM_Metr: MS_SSIM
 
-        SSIM_Metr = SSIM(
-            data_range=data_range,
-            size_average=True,
-            channel=num_channels,
-            nonnegative_ssim=True,
-        )
-        MSSSIM_Metr = MS_SSIM(
-            data_range=data_range, size_average=True, channel=num_channels
-        )
+    SSIM_Metr = SSIM(
+        data_range=data_range,
+        size_average=True,
+        channel=num_channels,
+        nonnegative_ssim=True,
+    )
+    MSSSIM_Metr = MS_SSIM(
+        data_range=data_range, size_average=True, channel=num_channels
+    )
 
     if write_val_per_feature:
         MSE_val_Metr: MSELoss
@@ -176,9 +175,8 @@ def train(
         MSSSIM_val_Metr = MS_SSIM(data_range=data_range, size_average=True, channel=1)
 
     # send to device
-    if write_SSIM_MSSSIM_on_the_fly:
-        SSIM_Metr.to(device)
-        MSSSIM_Metr.to(device)
+    SSIM_Metr.to(device)
+    MSSSIM_Metr.to(device)
     if write_val_per_feature:
         MSE_val_Metr.to(device)
         SSIM_val_Metr.to(device)
