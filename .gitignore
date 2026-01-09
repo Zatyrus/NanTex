@@ -15,7 +15,7 @@ model/
 logs/
 configs/
 model_checkpoints/
-#legacy/
+legacy/
 
 # Distribution / packaging
 .Python
