@@ -270,8 +270,8 @@ class Euthenia(Dataset):
         tmp = np.load(self._files[index])
 
         # Extract Img and Masks
-        X = tmp[self._out_channels :]
-        y = tmp[: self._out_channels]
+        X = tmp[-self._in_channels :] # feature channels are at the end of the array
+        y = tmp[: self._out_channels] # target channels are at the beginning of the array
 
         # ensure data type
         X = torch.from_numpy(X.astype(self._dtype_overlay_out))
